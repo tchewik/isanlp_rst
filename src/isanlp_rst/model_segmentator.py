@@ -3,7 +3,7 @@ import os
 import numpy as np
 from tensorflow.python.keras.models import load_model
 
-from annotation import DiscourseUnit
+from isanlp.annotation_rst import DiscourseUnit
 from features_processor_segmentation import FeaturesProcessorSegmentation
 import tensorflow as tf
 

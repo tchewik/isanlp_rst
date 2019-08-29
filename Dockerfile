@@ -12,6 +12,10 @@ COPY src/isanlp_rst /src/isanlp_rst
 COPY pipeline_object.py /src/isanlp_rst/pipeline_object.py
 COPY models /models
 
+COPY src/isanlp_rst/annotation_rst_pb2.py /root/.pyenv/versions/3.6.0/lib/python3.6/site-packages/isanlp/annotation_rst_pb2.py
+COPY src/isanlp_rst/annotation.py /root/.pyenv/versions/3.6.0/lib/python3.6/site-packages/isanlp/annotation_rst.py
+COPY src/isanlp_rst/annotation_to_protobuf.py /root/.pyenv/versions/3.6.0/lib/python3.6/site-packages/isanlp/annotation_to_protobuf.py
+
 ENV PYTHONPATH=/src/isanlp_rst/
 
 CMD [ "python", "/start.py", "-m", "pipeline_object", "-a", "PPL_RST" ]

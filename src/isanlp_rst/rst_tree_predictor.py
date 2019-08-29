@@ -1,4 +1,4 @@
-from annotation import DiscourseUnit
+from isanlp.annotation_rst import DiscourseUnit
 import pandas as pd
 
 

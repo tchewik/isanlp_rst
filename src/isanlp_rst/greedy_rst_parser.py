@@ -1,6 +1,7 @@
 import numpy as np
+import sys
 
-from annotation import DiscourseUnit
+from isanlp.annotation_rst import DiscourseUnit
 
 
 class GreedyRSTParser:
@@ -31,6 +32,10 @@ class GreedyRSTParser:
         self.tree_predictor.genre = genre
 
         nodes = edus
+        
+        for edu in nodes:
+            print(edu, file=sys.stderr)
+        
         max_id = edus[-1].id
 
         # initialize scores
@@ -54,8 +59,12 @@ class GreedyRSTParser:
                 left=nodes[j],
                 right=nodes[j + 1],
                 relation=relation,
-                proba=scores[j]
+                proba=scores[j],
+                text=nodes[j].text + nodes[j + 1].text  #annot_text[nodes[j].start:nodes[j+1].end]
             )
+            
+            print(temp, file=sys.stderr)
+            
             max_id += 1
 
             # modify the node list
@@ -96,7 +105,7 @@ class GreedyRSTParser:
                 left=nodes[0],
                 right=nodes[1],
                 relation='root',
-                proba=scores[0][1]
+                proba=scores[0]
             )
             nodes = [root]
 

@@ -16,14 +16,16 @@ class DiscourseUnit:
         self.right = right
         self.relation = relation
         self.nuclearity = nuclearity
-        self.proba = proba
+        self.proba = str(proba)
 
-        if self.left:
-            self.text = ' '.join([left.text.strip(), right.text.strip()])
+        if not text and left:
+            self.text = left.text + right.text
             self.start = left.start
             self.end = right.end
-
         else:
             self.text = text
             self.start = start
             self.end = end
+
+    def __str__(self):
+        return f"id: {self.id}\ntext: {self.text}\nrelation: {self.relation}\nleft: {self.left.text if self.left else None}\n\right: {self.right.text if self.right else None}\n"
