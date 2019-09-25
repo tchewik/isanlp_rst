@@ -94,7 +94,7 @@ class FeaturesProcessor:
 
         # map discourse units to annotations
         df['loc_x'] = df.snippet_x.map(self.annot_text.find)
-        df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + 1), axis=1)
+        df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
         df['token_begin_x'] = df.loc_x.map(self.locate_token)
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
 
