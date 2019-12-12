@@ -5,7 +5,7 @@ from . import annotation_rst as ann_rst
 from google.protobuf.any_pb2 import Any
 
 
-def get_pb_type(pb_ann):
+def get_pb_type(pb_ann):    
     if pb_ann.Is(pb.AnnotationList.DESCRIPTOR):
         return pb.AnnotationList
     elif pb_ann.Is(pb.AnnotationMap.DESCRIPTOR):

@@ -19,11 +19,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import paired_cosine_distances
 from sklearn.metrics.pairwise import paired_euclidean_distances
 from sklearn.metrics.pairwise import paired_manhattan_distances
-from features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words, pairs_words
-
-# Import
-from pandarallel import pandarallel
-pandarallel.initialize()
+from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words, count_words_x, count_words_y, pairs_words, relations_related
 
 warnings.filterwarnings('ignore')
 
@@ -42,10 +38,12 @@ class FeaturesProcessor:
 
         self.embed_model_path = os.path.join(model_dir_path, 'w2v', 'default', 'model.vec')
 
+        self.relations_related = relations_related
         self.stop_words = nltk.corpus.stopwords.words('russian')
-        self.count_words = count_words
+        self.count_words_x = count_words_x
+        self.count_words_y = count_words_y
         self.pairs_words = pairs_words
-
+        
         self.vectorizer = pickle.load(open(os.path.join(model_dir_path, 'tf_idf', 'pipeline.pkl'), 'rb'))
 
         # preprocessing functions
@@ -97,15 +95,15 @@ class FeaturesProcessor:
             print('1\t', end="", flush=True)
 
         # map discourse units to annotations
-        df['loc_x'] = df.snippet_x.map(self.annot_text.find)
-        df['loc_y'] = df.parallel_apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
+        #df['loc_x'] = df.snippet_x.map(self.annot_text.find)
+        #df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
         df['token_begin_x'] = df.loc_x.map(self.locate_token)
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
 
         # ToDO: bug in ling_20 (in progress)
-        # df = df[df['loc_y'] != -1]
+        df = df[df['loc_y'] != -1]
 
-        df['token_end_y'] = df.parallel_apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1, axis=1)  # -1
+        df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1, axis=1)  # -1
 
         # length of tokens sequence
         df['len_w_x'] = df['token_begin_y'] - df['token_begin_x']
@@ -115,6 +113,13 @@ class FeaturesProcessor:
                                                                         range(row.token_begin_x, row.token_begin_y)] if
                                                       pair]], axis=1)
         df['snippet_x_locs'] = df.snippet_x_locs.map(lambda row: row[0])
+        broken_pair = df[df.snippet_x_locs.map(len) < 1]
+        if not broken_pair.empty:
+            print()
+            print('found broken pair:')
+            print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y']].values)
+            print('-----------------------')
+        
         df['snippet_y_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
                                                                         range(row.token_begin_y, row.token_end_y)] if
                                                       pair]], axis=1)
@@ -135,7 +140,7 @@ class FeaturesProcessor:
         df['same_sentence'] = (df['sentence_begin_x'] == df['sentence_begin_y']).astype(int)
 
         # find the common syntax root of x and y
-        df['common_root'] = df.parallel_apply(lambda row: [self.locate_root(row)], axis=1)
+        df['common_root'] = df.apply(lambda row: [self.locate_root(row)], axis=1)
 
         # find its relative position in text
         df['common_root_position'] = df.common_root.map(lambda row: self.map_to_token(row[0])) / len(annot_tokens)
@@ -144,15 +149,22 @@ class FeaturesProcessor:
         df['common_root_fpos'] = df.common_root.map(lambda row: self.get_postag(row)[0])
 
         # 1 if it is located in y
-        df['root_in_y'] = df.parallel_apply(
+        df['root_in_y'] = df.apply(
             lambda row: self.map_to_token(row.common_root[0]) > row.token_begin_y, axis=1).astype(int)
 
         df.drop(columns=['common_root'], inplace=True)
 
-        # if self.verbose:
-        #     print(time.time() - t)
-        #     t = time.time()
-        #     print('3\t', end="", flush=True)
+        if self.verbose:
+            print(time.time() - t)
+            t = time.time()
+            print('3\t', end="", flush=True)
+            
+        # find certain markers for various relations
+        for relation in self.relations_related:
+            df[relation + '_count' + '_x'] = df.snippet_x.map(lambda row: self._relation_score(relation, row))
+            df[relation + '_count' + '_y'] = df.snippet_y.map(lambda row: self._relation_score(relation, row))
+        
+        
         #
         # # find syntax roots in both x and y
         # df['roots_x'] = df.snippet_x_locs.map(self.get_roots)
@@ -161,15 +173,15 @@ class FeaturesProcessor:
         # # then their postags
         # df.roots_x = df.roots_x.map(lambda row: '_'.join(list(set([postag for postag in self.get_postag(row)]))))
         # df.roots_y = df.roots_y.map(lambda row: '_'.join(list(set([postag for postag in self.get_postag(row)]))))
-
+        
         if self.verbose:
             print(time.time() - t)
             t = time.time()
             print('4\t', end="", flush=True)
 
         # get tokens
-        df['tokens_x'] = df.parallel_apply(lambda row: self.get_tokens(row.token_begin_x, row.token_begin_y), axis=1)
-        df['tokens_y'] = df.parallel_apply(lambda row: self.get_tokens(row.token_begin_y, row.token_end_y), axis=1)
+        df['tokens_x'] = df.apply(lambda row: self.get_tokens(row.token_begin_x, row.token_begin_y), axis=1)
+        df['tokens_y'] = df.apply(lambda row: self.get_tokens(row.token_begin_y, row.token_end_y), axis=1)
 
         # average word length
         df['len_av_x'] = df.tokens_x.map(lambda row: sum([len(word) for word in row])) / (df.len_w_x + 1e-8)
@@ -206,8 +218,8 @@ class FeaturesProcessor:
         df['morph_y'] = df.snippet_y_locs.map(self.get_morph)
 
         # count presence and/or quantity of various language features in the whole DUs and at the beginning/end of them
-        df = df.parallel_apply(lambda row: self._linguistic_features(row, tags=MORPH_FEATS), axis=1)
-        df = df.parallel_apply(lambda row: self._first_and_last_pair(row), axis=1)
+        df = df.apply(lambda row: self._linguistic_features(row, tags=MORPH_FEATS), axis=1)
+        df = df.apply(lambda row: self._first_and_last_pair(row), axis=1)
 
         if self.verbose:
             print(time.time() - t)
@@ -237,9 +249,11 @@ class FeaturesProcessor:
             print('8\t', end="", flush=True)
 
         # detect discourse markers
-        for word in self.count_words:
-            df[word + '_count' + '_x'] = df.snippet_x.parallel_apply(lambda row: self.count_marker_(word, row))
-            df[word + '_count' + '_y'] = df.snippet_y.parallel_apply(lambda row: self.count_marker_(word, row))
+        for word in self.count_words_x:
+            df[word + '_count' + '_x'] = df.snippet_x.map(lambda row: self.count_marker_(word, row))
+            
+        for word in self.count_words_y:
+            df[word + '_count' + '_y'] = df.snippet_y.map(lambda row: self.count_marker_(word, row))
 
         # count stop words in the texts
         df['stopwords_x'] = df.lemmas_x.map(self._count_stop_words)
@@ -255,6 +269,7 @@ class FeaturesProcessor:
         tf_idf_x = self.vectorizer.transform(df['snippet_x'])
         tf_idf_y = self.vectorizer.transform(df['snippet_y'])
         df['cos_tf_idf_dist'] = paired_cosine_distances(tf_idf_x, tf_idf_y)
+        df['ang_cos_tf_idf_sim'] = 1. - np.arccos(df['cos_tf_idf_dist']) * 2. / np.pi
 
         tf_idf_x = pd.DataFrame(tf_idf_x).add_prefix('tf_idf_x_')
         tf_idf_y = pd.DataFrame(tf_idf_y).add_prefix('tf_idf_y_')
@@ -300,6 +315,7 @@ class FeaturesProcessor:
             lambda row: ' '.join(word.split('_')[-1] if word.split('_')[-1] else 'X' for word in row.split()))
         df['postags_chrf'] = df.apply(lambda row: self.get_chrf_score(row.postags_x, row.postags_y), axis=1)
 
+
         df['inverted_text_length'] = 1. / len(annot_tokens)
 
         df = df.drop(columns=[
@@ -315,7 +331,7 @@ class FeaturesProcessor:
             print('[DONE]')
             print('estimated time:', time.time() - t_final)
 
-        return df
+        return df.fillna(0.)
 
     def locate_token(self, start):
         i = None
@@ -390,7 +406,7 @@ class FeaturesProcessor:
 
     def get_match_between_vectors_(self, vector1, vector2):
         return spatial.distance.hamming([k > 0.01 for k in vector1], [k > 0.01 for k in vector2])
-
+    
     def _get_fpos_vectors(self, row):
         result = {}
 
@@ -443,6 +459,9 @@ class FeaturesProcessor:
 
     def _count_stop_words(self, lemmatized_text, threshold=0):
         return len([1 for token in lemmatized_text if len(token) >= threshold and token in self.stop_words])
+    
+    def _relation_score(self, relation, row):
+        return sum([1 for value in self.relations_related[relation] if value in row])
 
     def _first_and_last_pair(self, row):
         def get_features_for_snippet(first_pair_text, first_pair_morph, last_pair_text, last_pair_morph, mark='_x'):
@@ -554,6 +573,7 @@ class FeaturesProcessor:
         embeddings['cos_embed_dist'] = paired_cosine_distances(df_embed_x, df_embed_y)
         embeddings['eucl_embed_dist'] = paired_euclidean_distances(df_embed_x, df_embed_y)
         embeddings['manh_embed_dist'] = paired_manhattan_distances(df_embed_x, df_embed_y)
+        embeddings['ang_cos_sim'] = 1. - np.arccos(embeddings['cos_embed_dist']) * 2. / np.pi
         df = pd.concat([df.reset_index(drop=True), embeddings.reset_index(drop=True)], axis=1)
 
         return df
