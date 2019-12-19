@@ -143,7 +143,7 @@ class FeaturesProcessor:
         df['common_root'] = df.apply(lambda row: [self.locate_root(row)], axis=1)
 
         # find its relative position in text
-        df['common_root_position'] = df.common_root.map(lambda row: self.map_to_token(row[0])) / len(annot_tokens)
+        #df['common_root_position'] = df.common_root.map(lambda row: self.map_to_token(row[0])) / len(annot_tokens)
 
         # define its fPOS
         df['common_root_fpos'] = df.common_root.map(lambda row: self.get_postag(row)[0])
@@ -184,8 +184,8 @@ class FeaturesProcessor:
         df['tokens_y'] = df.apply(lambda row: self.get_tokens(row.token_begin_y, row.token_end_y), axis=1)
 
         # average word length
-        df['len_av_x'] = df.tokens_x.map(lambda row: sum([len(word) for word in row])) / (df.len_w_x + 1e-8)
-        df['len_av_y'] = df.tokens_y.map(lambda row: sum([len(word) for word in row])) / (df.len_w_y + 1e-8)
+        #df['len_av_x'] = df.tokens_x.map(lambda row: sum([len(word) for word in row])) / (df.len_w_x + 1e-8)
+        #df['len_av_y'] = df.tokens_y.map(lambda row: sum([len(word) for word in row])) / (df.len_w_y + 1e-8)
 
         # get lemmas
         df['lemmas_x'] = df.snippet_x_locs.map(self.get_lemma)
@@ -234,8 +234,8 @@ class FeaturesProcessor:
         df['morph_vec_y'] = pd.Series(self.columns_to_vectors_(linknames_for_snippet_y))
         df['morph_correlation'] = df[['morph_vec_x', 'morph_vec_y']].apply(
             lambda row: spatial.distance.correlation(*row), axis=1)
-        df['morph_canberra'] = df[['morph_vec_x', 'morph_vec_y']].apply(lambda row: spatial.distance.canberra(*row),
-                                                                        axis=1)
+        #df['morph_canberra'] = df[['morph_vec_x', 'morph_vec_y']].apply(lambda row: spatial.distance.canberra(*row),
+        #                                                                axis=1)
         df['morph_hamming'] = df[['morph_vec_x', 'morph_vec_y']].apply(lambda row: spatial.distance.hamming(*row),
                                                                        axis=1)
         df['morph_matching'] = df[['morph_vec_x', 'morph_vec_y']].apply(
@@ -282,7 +282,7 @@ class FeaturesProcessor:
             print('10\t', end="", flush=True)
 
         # count various lexical similarity metrics
-        df['jac_simil'] = df.apply(lambda row: self.get_jaccard_sim(row.lemmas_x, row.lemmas_y), axis=1)
+        #df['jac_simil'] = df.apply(lambda row: self.get_jaccard_sim(row.lemmas_x, row.lemmas_y), axis=1)
         df['bleu'] = df.apply(lambda row: self.get_bleu_score(row.lemmas_x, row.lemmas_y), axis=1)
 
         if self.verbose:
@@ -315,8 +315,7 @@ class FeaturesProcessor:
             lambda row: ' '.join(word.split('_')[-1] if word.split('_')[-1] else 'X' for word in row.split()))
         df['postags_chrf'] = df.apply(lambda row: self.get_chrf_score(row.postags_x, row.postags_y), axis=1)
 
-
-        df['inverted_text_length'] = 1. / len(annot_tokens)
+        #df['inverted_text_length'] = 1. / len(annot_tokens)
 
         df = df.drop(columns=[
             'lemmas_x', 'lemmas_y',
@@ -475,10 +474,10 @@ class FeaturesProcessor:
                 if mark == key[-2:]:
                     if key[:-2] == 'first_pair':
                         for word in self.pairs_words[key]:
-                            result[key[:-1] + word + mark] = int(bool(re.match(word, first_pair_text, re.IGNORECASE)))
+                            result[key[:-1] + word + mark] = int(bool(re.findall(word, first_pair_text, re.IGNORECASE)))
                     else:
                         for word in self.pairs_words[key]:
-                            result[key[:-1] + word + mark] = int(bool(re.match(word, last_pair_text, re.IGNORECASE)))
+                            result[key[:-1] + word + mark] = int(bool(re.findall(word, last_pair_text, re.IGNORECASE)))
 
             # for word in self.pairs_words:
             #     result['first_pair_' + word + mark] = int(bool(re.match(word, first_pair_text, re.IGNORECASE)))
