@@ -661,8 +661,9 @@ for rstfile in files:
         for node in out_graph:
             data.append(node.to_row())
 
-        filename = out_file.split('/')[-1].split('.')[0]
+        filename = '.'.join(out_file.split('/')[-1].split('.')[:-1])  # '.'.join - for science texts, use .split('.')[0] for news/blogs (ToDO:)
         textfile = '/'.join(rstfile.split('/')[:-1]).replace('rs3', 'txt') + '/' + filename + '.txt'
+
         with open(textfile, 'r') as f:
             text = f.read()
 
