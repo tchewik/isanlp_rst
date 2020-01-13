@@ -8,10 +8,14 @@ from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
 from sklearn.utils.linear_assignment_ import linear_assignment
 from tensorflow.python.keras import backend as K
+import tensorflow as tf
 from tensorflow.python.keras.callbacks import CSVLogger, TensorBoard
 from tensorflow.python.keras.layers import Layer, InputSpec
 from tensorflow.python.keras.models import Model
-from tensorflow.python.keras.optimizers import Adam
+from tensorflow.python.keras.optimizers import Adam, Adadelta
+from tensorflow.python.keras.backend import random_uniform
+from tensorflow.python.keras.losses import kld
+from tensorflow.random import uniform, poisson
 
 logger = logging.getLogger()
 
@@ -88,10 +92,9 @@ class DeepClusteringBase:
                                   callbacks=[csv_logger, callback_tensorboard],
                                   verbose=False, validation_split=0.1)
         logger.info('Pretraining time: {}'.format(str(time() - t0)))
-        self._autoencoder.save(os.path.join(self._save_dir, 'pretrain_cae_model.h5'))
-
-        logger.info('Pretrained weights are saved to {}'.format(os.path.join(self._save_dir,
-                                                                             'pretrain_cae_model.h5')))
+        #self._autoencoder.save(os.path.join(self._save_dir, 'pretrain_cae_model.h5'))
+        #logger.info('Pretrained weights are saved to {}'.format(os.path.join(self._save_dir,
+        #                                                                     'pretrain_cae_model.h5')))
         self._pretrained = True
 
     def load_weights(self, weights_path):
@@ -169,7 +172,7 @@ class DeepClusteringBase:
 
     def train_model(self, x, y, batch_size, variables):
         x = DeepClusteringBase._standartize_data(x)
-        n_samples = x.shape[0]
+        n_samples = x[0].shape[0]
 
         logger.info('Update interval {}'.format(self._update_interval))
         save_interval = n_samples / batch_size * 5
@@ -210,11 +213,13 @@ class DeepClusteringBase:
                                                                                     index, batch_size))
                 index += 1
 
+            """
             if ite % save_interval == 0:
                 logger.info(
                     'saving model to: {}'.format(os.path.join(self._save_dir, 'dcec_model_{}.h5'.format(str(ite)))))
                 self._model.save_weights(os.path.join(self._save_dir, 'dcec_model_{}.h5'.format(str(ite))))
-
+            """
+                
             ite += 1
 
     def summary(self):
@@ -301,6 +306,7 @@ class IDEC(DeepClusteringBase):
                  input_shape,
                  autoencoder_ctor,
                  n_clusters,
+                 distribution_beta,
                  pretrain_epochs,
                  log_dir,
                  tol=0.05,
@@ -320,6 +326,7 @@ class IDEC(DeepClusteringBase):
                          **kwargs)
 
         logger.info(f'Initialized tolerance = {self._tol}.')
+        self._distribution_beta = distribution_beta
         self._update_interval = update_interval
         self._alpha = alpha
         self._maxiter = maxiter
@@ -357,11 +364,22 @@ class IDEC(DeepClusteringBase):
     def target_distribution(q):
         weight = q ** 2 / q.sum(0)
         return (weight.T / weight.sum(1)).T
+    
+    def ss_loss(self):
+        def extended_kullback_leibler(y_true, y_pred):
+            distribution = uniform(shape=K.shape(y_pred), minval=0, maxval=self._n_clusters)
+            #distribution = poisson(shape=K.shape(y_pred), lam=self._n_clusters//3)
+            result = (1. - self._distribution_beta) * kld(y_true, y_pred) + self._distribution_beta * kld(y_pred, distribution)
+            return result
+
+        return extended_kullback_leibler
 
     def compile(self, gamma=0.1, loss=['mse'], *args, **kwargs):
         #optimizer = Adam(lr=0.01)
-        optimizer='adadelta'
-        self._model.compile(loss=['kld'] + loss * (len(self._model.outputs) - 1),  # capture multioutput models
+        optimizer = Adadelta(lr=0.1)
+        clustering_loss = [self.ss_loss()]  # ['kld']
+        #optimizer='adadelta'
+        self._model.compile(loss=clustering_loss + loss * (len(self._model.outputs) - 1),  # capture multioutput models
                             loss_weights=[gamma] + [1. for _ in range(len(self._model.outputs)-1)],
                             optimizer=optimizer)
 
@@ -563,10 +581,12 @@ class DC_Kmeans(DeepClusteringBase):
             self.f = self._encoder.predict(x)
 
             # save intermediate model
+            """
             if ite % save_interval == 0:
                 # save model checkpoints
                 print('saving model to:', self._save_dir + '/model_' + str(ite) + '.h5')
                 self._model.save_weights(self._save_dir + '/model_' + str(ite) + '.h5')
+            """
 
             ite += 1
 

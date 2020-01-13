@@ -1,5 +1,6 @@
 class DiscourseUnit:
-    def __init__(self, id, left=None, right=None, text='', start=None, end=None, relation=None, nuclearity=None, proba=1.):
+    def __init__(self, id, left=None, right=None, text='', start=None, end=None, 
+                 orig_text=None, relation=None, nuclearity=None, proba=1.):
         """
         :param int id:
         :param DiscourseUnit left:
@@ -17,15 +18,27 @@ class DiscourseUnit:
         self.relation = relation
         self.nuclearity = nuclearity
         self.proba = str(proba)
+        self.start = start
+        self.end = end
 
-        if not text and left:
-            self.text = left.text + right.text
+        if self.left:
+            gap_counter = 0
             self.start = left.start
             self.end = right.end
+        
+        # (1) ??
+        """
+        if orig_text:            
+            self.text = orig_text[self.start:self.end].strip()
         else:
-            self.text = text
-            self.start = start
-            self.end = end
-
+            self.text = text.strip()
+        """
+        # (2) for gold tree parsing
+        if self.left:
+            self.text = ' '.join([self.left.text, self.right.text])
+        else:
+            self.text = orig_text[self.start:self.end].strip()
+        
+    
     def __str__(self):
-        return f"id: {self.id}\ntext: {self.text}\nrelation: {self.relation}\nleft: {self.left.text if self.left else None}\n\right: {self.right.text if self.right else None}\n"
+        return f"id: {self.id}\ntext: {self.text}\nrelation: {self.relation}\nleft: {self.left.text if self.left else None}\nright: {self.right.text if self.right else None}\nstart: {self.start}\nend: {self.end}"

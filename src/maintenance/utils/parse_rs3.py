@@ -372,7 +372,14 @@ def get_pairs(df, text):
         text = text.replace(key, text_html_map[key])
         df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
 
-    edus = df[df.kind == 'edu']
+    edus = df[df.kind == 'edu'].values
+    #for i in range(len(edus)):
+    #    pos = edus[i][-1]
+    #    first_overlap = i
+    #    for j in range(i, 0, -1):
+    #        if edus[j][-1] == pos:
+    #            first_overlap = j
+    #            edus[i][0].replace(edus[j][0], '')
     
     df['id'] = df.index
     table = df.merge(df, left_on='dep_parent', right_on='id', how='inner', sort=False, right_index=True) \
@@ -399,7 +406,7 @@ def get_pairs(df, text):
         if cand == -1:
             cand = plain_text.find(row.replace('  ', ' ').strip())
         return cand
-
+    
     table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
     table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
           
@@ -463,12 +470,14 @@ def get_pairs(df, text):
 
     table.drop_duplicates(inplace=True)
     
-    edus = list(edus.snippet)
-    edus_list = [edus[0]]
-    for i in range(1, len(edus)):
-        edus_list.append(edus[i].replace(edus[i-1], '').strip())
+    edus_list = []
+    for i in range(len(edus)-1, 0, -1):
+        for j in range(i-1, 0, -1):
+            edus[i][0] = edus[i][0].replace(edus[j][0], '')
+        edus_list.append(edus[i][0].strip())
+    edus_list.append(edus[0][0])
     
-    return table, edus_list
+    return table, edus_list[::-1]
 
 #######################################################################################################
 
