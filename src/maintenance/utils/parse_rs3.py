@@ -373,13 +373,6 @@ def get_pairs(df, text):
         df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
 
     edus = df[df.kind == 'edu'].values
-    #for i in range(len(edus)):
-    #    pos = edus[i][-1]
-    #    first_overlap = i
-    #    for j in range(i, 0, -1):
-    #        if edus[j][-1] == pos:
-    #            first_overlap = j
-    #            edus[i][0].replace(edus[j][0], '')
     
     df['id'] = df.index
     table = df.merge(df, left_on='dep_parent', right_on='id', how='inner', sort=False, right_index=True) \
@@ -412,46 +405,54 @@ def get_pairs(df, text):
           
     def exact_order(row):
         
-        order = ''
-          
-        if row.loc_x < row.loc_y:
-            order = 'SN'
-
-        if row.loc_x > row.loc_y:
-            order = 'NS'
-
-        if row.loc_x == -1 and row.category_id == 'elaboration_r':
-            order = 'NS'
-
-        if row.loc_x == -1 and row.category_id == 'preparation_r':
-            order = 'NS'
+        if 'order' in row.keys():
+            order = row.order
             
+            if row.category_id[-2:] == '_m':
+                order = 'NN'
+        else:
+            order = ''
+
+            if row.loc_x < row.loc_y:
+                order = 'SN'
+
+            if row.loc_x > row.loc_y:
+                order = 'NS'
+        
+            if row.loc_x == -1 and row.category_id == 'elaboration_r':
+                order = 'NS'
+
+            if row.loc_x == -1 and row.category_id == 'preparation_r':
+                order = 'NS'
+        
         return order
         
     table['order'] = table.apply(lambda row: exact_order(row), axis=1)
+    
     ns = table[table.order == 'NS']
     sn = table[table.order == 'SN']
 
-    ns.rename(columns={
+    ns = ns.rename(columns={
         'snippet_x': 'snippet_y_',
         'id_x': 'id_y_',
         'id_y': 'id_x_',
         'snippet_y': 'snippet_x_'
-    }, inplace=True)
-    ns.rename(columns={
+    })
+    ns = ns.rename(columns={
         'snippet_x_': 'snippet_x',
         'id_x_': 'id_x',
         'id_y_': 'id_y',
         'snippet_y_': 'snippet_y'
-    }, inplace=True)
+    })
 
-    table = pd.concat([sn, ns], sort=False)
+    table = pd.concat([sn, ns], ignore_index=True, sort=False)
+    
     table.loc[table.category_id.str[-2:] == '_m', 'order'] = 'NN'
     table.snippet_y = table.apply(lambda row: remove_prefix(row.snippet_y.strip(), row.snippet_x.strip()), axis=1)
 
     table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
     table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
-    table['order'] = table.apply(lambda row: exact_order(row), axis=1)
+    #table['order'] = table.apply(lambda row: exact_order(row), axis=1)
     table = table[table.loc_x != -1]
     table = table[table.loc_y != -1]
     
