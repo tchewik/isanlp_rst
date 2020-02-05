@@ -12,10 +12,10 @@ import tensorflow as tf
 from tensorflow.python.keras.callbacks import CSVLogger, TensorBoard
 from tensorflow.python.keras.layers import Layer, InputSpec
 from tensorflow.python.keras.models import Model
-from tensorflow.python.keras.optimizers import Adam, Adadelta
+#from tensorflow.python.keras.optimizers import Adam, Adadelta
+from tensorflow.keras.optimizers import Adam, Adadelta
 from tensorflow.python.keras.backend import random_uniform
 from tensorflow.python.keras.losses import kld
-from tensorflow.random import uniform, poisson
 
 logger = logging.getLogger()
 
@@ -76,9 +76,9 @@ class DeepClusteringBase:
 
         callback_tensorboard = TensorBoard(log_dir=os.path.join(self._log_dir, str(datetime.now())),
                                            histogram_freq=2,
-                                           batch_size=32,
+                                           #batch_size=32,
                                            write_graph=True,
-                                           write_grads=True,
+                                           #write_grads=True,
                                            write_images=False)
 
         # begin training
@@ -367,8 +367,7 @@ class IDEC(DeepClusteringBase):
     
     def ss_loss(self):
         def extended_kullback_leibler(y_true, y_pred):
-            distribution = uniform(shape=K.shape(y_pred), minval=0, maxval=self._n_clusters)
-            #distribution = poisson(shape=K.shape(y_pred), lam=self._n_clusters//3)
+            distribution = tf.random.uniform(shape=K.shape(y_pred), minval=0, maxval=self._n_clusters)
             result = (1. - self._distribution_beta) * kld(y_true, y_pred) + self._distribution_beta * kld(y_pred, distribution)
             return result
 

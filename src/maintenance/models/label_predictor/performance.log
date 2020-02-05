@@ -1,0 +1,26 @@
+weighted f1:  0.5257588933931949
+macro f1:  0.3810695760278998
+accuracy:  0.5364317330609465
+
+                precision    recall  f1-score   support
+
+ attribution_r       0.71      0.78      0.74       253
+     purpose_r       0.70      0.74      0.72       205
+    contrast_m       0.71      0.65      0.68       398
+   condition_r       0.57      0.68      0.62       317
+       joint_m       0.57      0.61      0.59      1322
+ elaboration_r       0.50      0.66      0.57      1337
+       cause_r       0.50      0.46      0.48       485
+ preparation_r       0.50      0.39      0.44       319
+   same-unit_m       0.52      0.30      0.38       199
+    sequence_m       0.60      0.27      0.38       304
+  evaluation_r       0.38      0.28      0.32       347
+    evidence_r       0.46      0.19      0.27       140
+  comparison_m       0.24      0.16      0.19       102
+  background_r       0.16      0.08      0.10       146
+  concession_r       0.00      0.00      0.00         0
+ restatement_m       0.00      0.00      0.00         0
+solutionhood_r       0.00      0.00      0.00         0
+
+     macro avg       0.42      0.37      0.38      5874
+  weighted avg       0.53      0.54      0.53      5874

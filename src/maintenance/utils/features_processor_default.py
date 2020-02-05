@@ -20,6 +20,8 @@ from sklearn.metrics.pairwise import paired_cosine_distances
 from sklearn.metrics.pairwise import paired_euclidean_distances
 from sklearn.metrics.pairwise import paired_manhattan_distances
 from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words, count_words_x, count_words_y, pairs_words, relations_related
+from dostoevsky.tokenization import RegexTokenizer
+from dostoevsky.models import FastTextSocialNetworkModel
 
 warnings.filterwarnings('ignore')
 
@@ -72,6 +74,9 @@ class FeaturesProcessor:
                                                               word not in self.stop_words]
 
         self.fpos_combinations = FPOS_COMBINATIONS
+        
+        # sentiment
+        self.sentiment_model = FastTextSocialNetworkModel(tokenizer=RegexTokenizer())
 
         if self.verbose:
             print('[DONE]')
@@ -266,8 +271,8 @@ class FeaturesProcessor:
 
         # vectorize
         df.reset_index(drop=True, inplace=True)
-        tf_idf_x = self.vectorizer.transform(df['snippet_x'])
-        tf_idf_y = self.vectorizer.transform(df['snippet_y'])
+        tf_idf_x = self.vectorizer.transform(df['snippet_x'].map(lambda row: ' '.join(nltk.tokenize.casual_tokenize(row))))
+        tf_idf_y = self.vectorizer.transform(df['snippet_y'].map(lambda row: ' '.join(nltk.tokenize.casual_tokenize(row))))
         df['cos_tf_idf_dist'] = paired_cosine_distances(tf_idf_x, tf_idf_y)
         df['ang_cos_tf_idf_sim'] = 1. - np.arccos(df['cos_tf_idf_dist']) * 2. / np.pi
 
@@ -298,7 +303,7 @@ class FeaturesProcessor:
             t = time.time()
             print('12\t', end="", flush=True)
 
-        # Get relative positions in text
+        # get relative positions in text
         df['token_begin_x'] = df['token_begin_x'] / len(annot_tokens)
         df['token_begin_y'] = df['token_begin_y'] / len(annot_tokens)
         df['token_end_y'] = df['token_end_y'] / len(annot_tokens)
@@ -309,13 +314,13 @@ class FeaturesProcessor:
         df['snippet_x_tmp'] = df.lemmas_x.map(lambda lemmas: ' '.join(lemmas).strip())
         df['snippet_y_tmp'] = df.lemmas_y.map(lambda lemmas: ' '.join(lemmas).strip())
 
-        df['postags_x'] = df.snippet_x_tmp.map(
-            lambda row: ' '.join(word.split('_')[-1] if word.split('_')[-1] else 'X' for word in row.split()))
-        df['postags_y'] = df.snippet_y_tmp.map(
-            lambda row: ' '.join(word.split('_')[-1] if word.split('_')[-1] else 'X' for word in row.split()))
-        df['postags_chrf'] = df.apply(lambda row: self.get_chrf_score(row.postags_x, row.postags_y), axis=1)
+        df['postags_x'] = df.snippet_x_locs.map(self.get_postags)
+        df['postags_y'] = df.snippet_y_locs.map(self.get_postags)
 
         #df['inverted_text_length'] = 1. / len(annot_tokens)
+        
+        # count sentiments
+        df = self._get_sentiments(df)
 
         df = df.drop(columns=[
             'lemmas_x', 'lemmas_y',
@@ -461,7 +466,32 @@ class FeaturesProcessor:
     
     def _relation_score(self, relation, row):
         return sum([1 for value in self.relations_related[relation] if value in row])
-
+    
+    def _postag(self, location):
+        return self.annot_postag[location[0]][location[1][0]]
+    
+    def get_postags(self, locations):
+        result = []
+        for location in locations:
+            result.append(self._postag(location))
+        return ' '.join(result)
+    
+    def _first_postags(self, locations, n=2):
+        result = []
+        for location in locations[:n]:
+            sent, word = location[0], location[1][0]
+            postag = self.annot_postag[sent][word]
+            result.append(postag)
+        return result
+    
+    def _last_postags(self, locations, n=2):
+        result = []
+        for location in locations[-n:]:
+            sent, word = location[0], location[1][0]
+            postag = self.annot_postag[sent][word]
+            result.append(postag)
+        return result
+            
     def _first_and_last_pair(self, row):
         def get_features_for_snippet(first_pair_text, first_pair_morph, last_pair_text, last_pair_morph, mark='_x'):
             result = {}
@@ -478,21 +508,17 @@ class FeaturesProcessor:
                     else:
                         for word in self.pairs_words[key]:
                             result[key[:-1] + word + mark] = int(bool(re.findall(word, last_pair_text, re.IGNORECASE)))
-
-            # for word in self.pairs_words:
-            #     result['first_pair_' + word + mark] = int(bool(re.match(word, first_pair_text, re.IGNORECASE)))
-            #     result['last_pair_' + word + mark] = int(bool(re.match(word, last_pair_text, re.IGNORECASE)))
-
+                            
             return result
 
         # snippet X
-        first_pair_text_x = ' '.join([token for token in row.tokens_x[:2]])
-        first_pair_morph_x = '_'.join(
-            [token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_x[:2]])
+        first_pair_text_x = ' '.join([token for token in row.tokens_x[:2]]).lower()
+        first_pair_morph_x = '_'.join(self._first_postags(row.snippet_x_locs))
+        #[token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_x[:2]])
         if len(row.tokens_x) > 2:
-            last_pair_text_x = ' '.join([token for token in row.tokens_x[-2:]])
-            last_pair_morph_x = '_'.join(
-                [token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_x[-2:]])
+            last_pair_text_x = ' '.join([token for token in row.tokens_x[-2:]]).lower()
+            last_pair_morph_x = '_'.join(self._last_postags(row.snippet_x_locs))
+                #[token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_x[-2:]])
         else:
             last_pair_text_x = ' '
             last_pair_morph_x = 'X'
@@ -502,13 +528,13 @@ class FeaturesProcessor:
                                                          '_x')
 
         # snippet Y
-        first_pair_text_y = ' '.join([token for token in row.tokens_y[:2]])
-        first_pair_morph_y = '_'.join(
-            [token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_y[:2]])
+        first_pair_text_y = ' '.join([token for token in row.tokens_y[:2]]).lower()
+        first_pair_morph_y = '_'.join(self._first_postags(row.snippet_y_locs))            
+        #[token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_y[:2]])
         if len(row.tokens_y) > 2:
-            last_pair_text_y = ' '.join([token for token in row.tokens_y[-2:]])
-            last_pair_morph_y = '_'.join(
-                [token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_y[-2:]])
+            last_pair_text_y = ' '.join([token for token in row.tokens_y[-2:]]).lower()
+            last_pair_morph_y = '_'.join(self._last_postags(row.snippet_y_locs))
+                #[token.get('fPOS') if token.get('fPOS') else 'X' for token in row.morph_y[-2:]])
         else:
             last_pair_text_y = ' '
             last_pair_morph_y = 'X'
@@ -535,12 +561,16 @@ class FeaturesProcessor:
             return chrf_score.corpus_chrf([text1], [text2], min_len=2)
         except ZeroDivisionError:
             return 0.
-
-    def _tag_postags(self, locations):
+    
+    def _tag_postags_morph(self, locations):
         result = []
         for location in locations:
             sent, word = location[0], location[1][0]
-            result.append(self.annot_lemma[sent][word] + '_' + self.annot_postag[sent][word])
+            _postag = self.annot_morph[sent][word].get('fPOS')
+            if _postag: 
+                result.append(self.annot_lemma[sent][word] + '_' + _postag)
+            else:
+                result.append(self.annot_lemma[sent][word])
         return result
 
     def _get_vectors(self, df):
@@ -561,8 +591,8 @@ class FeaturesProcessor:
 
         # Add the required UPoS postags (as in the rusvectores word2vec model's vocabulary)
         if self.word2vec_tag_required:
-            df.lemmas_x = df.snippet_x_locs.map(self._tag_postags)
-            df.lemmas_y = df.snippet_y_locs.map(self._tag_postags)
+            df.lemmas_x = df.snippet_x_locs.map(self._tag_postags_morph)
+            df.lemmas_y = df.snippet_y_locs.map(self._tag_postags_morph)
 
         # Make two dataframes with average vectors for x and y,
         # merge them with the original dataframe
@@ -571,8 +601,18 @@ class FeaturesProcessor:
         embeddings = pd.DataFrame(df_embed_x).merge(pd.DataFrame(df_embed_y), left_index=True, right_index=True)
         embeddings['cos_embed_dist'] = paired_cosine_distances(df_embed_x, df_embed_y)
         embeddings['eucl_embed_dist'] = paired_euclidean_distances(df_embed_x, df_embed_y)
-        embeddings['manh_embed_dist'] = paired_manhattan_distances(df_embed_x, df_embed_y)
-        embeddings['ang_cos_sim'] = 1. - np.arccos(embeddings['cos_embed_dist']) * 2. / np.pi
         df = pd.concat([df.reset_index(drop=True), embeddings.reset_index(drop=True)], axis=1)
 
+        return df
+    
+    def _get_sentiments(self, df):
+        temp = df.snippet_x.map(lambda row: self.sentiment_model.predict([row]))
+        #for key in temp.iloc[0][0].keys():
+        for key in ['positive', 'negative']:
+            df['sm_x_'+key] = temp.map(lambda row: row[0].get(key))
+
+        temp = df.snippet_y.map(lambda row: self.sentiment_model.predict([row]))
+        for key in ['positive', 'negative']:
+            df['sm_y_'+key] = temp.map(lambda row: row[0].get(key))
+            
         return df

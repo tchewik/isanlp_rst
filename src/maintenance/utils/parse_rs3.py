@@ -636,7 +636,8 @@ for rstfile in files:
                 out_graph.append(node)
 
             else:
-                print('>>>', nid, node.kind)
+                pass
+                #print('>>>', nid, node.kind)
 
         out_graph.sort(key=lambda x: int(x.id))
 
@@ -645,7 +646,7 @@ for rstfile in files:
 
         for joint_tree in joint_trees:
             nid = [get_node(id) for id in joint_tree]
-            print(nid)
+            #print(nid)
 
             # news_44/108-115
             for i in range(len(nid)):
