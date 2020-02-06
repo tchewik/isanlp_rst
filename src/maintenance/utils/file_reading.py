@@ -35,10 +35,19 @@ def read_annotation(filename):
         annot['text'] = annot['text'].replace(key, value)
     return annot
 
-def read_gold(filename):
-    df = pd.read_json(filename + '.json')
-    for key in text_html_map.keys():
-        df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
-        df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
+def read_gold(filename, features=False):
+    if features:
+        return pd.read_pickle(filename + '.gold.pkl')
+    else:   
+        df = pd.read_json(filename + '.json')
+        for key in text_html_map.keys():
+            df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
+            df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
 
-    return df
+        return df
+
+def read_negative(filename, features=False):
+    if features:
+        return pd.read_pickle(filename + '.neg.features')
+    return pd.read_json(filename + '.json.neg')
+    

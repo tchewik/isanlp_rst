@@ -100,8 +100,11 @@ class FeaturesProcessor:
             print('1\t', end="", flush=True)
 
         # map discourse units to annotations
-        #df['loc_x'] = df.snippet_x.map(self.annot_text.find)
-        #df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
+        if not 'loc_x' in df.keys():
+            df['loc_x'] = df.snippet_x.map(self.annot_text.find)
+        if not 'loc_y' in df.keys():
+            df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
+            
         df['token_begin_x'] = df.loc_x.map(self.locate_token)
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
 
@@ -124,6 +127,7 @@ class FeaturesProcessor:
             print('found broken pair:')
             print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y']].values)
             print('-----------------------')
+            df = df[df.snippet_x_locs.map(len) > 0]
         
         df['snippet_y_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
                                                                         range(row.token_begin_y, row.token_end_y)] if
