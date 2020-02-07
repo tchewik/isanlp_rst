@@ -43,6 +43,9 @@ def read_gold(filename, features=False):
         for key in text_html_map.keys():
             df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
             df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
+            
+        df = df[df['snippet_x'].map(len) > 0]
+        df = df[df['snippet_y'].map(len) > 0]
 
         return df
 

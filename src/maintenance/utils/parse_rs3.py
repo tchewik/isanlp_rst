@@ -474,7 +474,8 @@ def get_pairs(df, text):
     edus_list = []
     for i in range(len(edus)-1, 0, -1):
         for j in range(i-1, 0, -1):
-            edus[i][0] = edus[i][0].replace(edus[j][0], '')
+            if len(edus[j][0]) > 4:
+                edus[i][0] = edus[i][0].replace(edus[j][0], '')
         edus_list.append(edus[i][0].strip())
     edus_list.append(edus[0][0])
     

@@ -110,7 +110,7 @@ class FeaturesProcessor:
 
         # ToDO: bug in ling_20 (in progress)
         df = df[df['loc_y'] != -1]
-
+        
         df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1, axis=1)  # -1
 
         # length of tokens sequence
