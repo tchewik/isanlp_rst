@@ -80,6 +80,12 @@ class FeaturesProcessor:
 
         if self.verbose:
             print('[DONE]')
+            
+    def _find_y(self, snippet_x, snippet_y, loc_x):
+        result = self.annot_text.find(snippet_y, loc_x + len(snippet_x))
+        if result < 0:
+            result = self.annot_text.find(snippet_y)
+        return result
 
     def __call__(self, df_, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
@@ -103,7 +109,7 @@ class FeaturesProcessor:
         if not 'loc_x' in df.keys():
             df['loc_x'] = df.snippet_x.map(self.annot_text.find)
         if not 'loc_y' in df.keys():
-            df['loc_y'] = df.apply(lambda row: self.annot_text.find(row.snippet_y, row.loc_x + len(row.snippet_x)), axis=1)
+            df['loc_y'] = df.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
             
         df['token_begin_x'] = df.loc_x.map(self.locate_token)
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
@@ -111,7 +117,11 @@ class FeaturesProcessor:
         # ToDO: bug in ling_20 (in progress)
         df = df[df['loc_y'] != -1]
         
-        df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1, axis=1)  # -1
+        try:
+            df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1, axis=1)  # -1
+        except:
+            print('>>>', (df.snippet_x.values, df.snippet_y.values))
+            return -1
 
         # length of tokens sequence
         df['len_w_x'] = df['token_begin_y'] - df['token_begin_x']
@@ -610,12 +620,19 @@ class FeaturesProcessor:
         return df
     
     def _get_sentiments(self, df):
-        temp = df.snippet_x.map(lambda row: self.sentiment_model.predict([row]))
-        #for key in temp.iloc[0][0].keys():
+        try:
+            temp = df.snippet_x.map(lambda row: self.sentiment_model.predict([row]))
+        except:
+            temp = df.snippet_x.map(lambda row: [{'positive': 0., 'negative': 0.}])
+
         for key in ['positive', 'negative']:
             df['sm_x_'+key] = temp.map(lambda row: row[0].get(key))
 
-        temp = df.snippet_y.map(lambda row: self.sentiment_model.predict([row]))
+        try:
+            temp = df.snippet_y.map(lambda row: self.sentiment_model.predict([row]))
+        except:
+            temp = df.snippet_y.map(lambda row: [{'positive': 0., 'negative': 0.}])
+            
         for key in ['positive', 'negative']:
             df['sm_y_'+key] = temp.map(lambda row: row[0].get(key))
             
