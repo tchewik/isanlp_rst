@@ -3,17 +3,25 @@ import pandas as pd
 
 text_html_map = {
     r'\n': r' ',
-    r'&gt;': r'>',
-    r'&lt;': r'<',
+    #r'&gt;': r'>',
+    #r'&lt;': r'<',
+    r'<': r' менее ',
+    r'&lt;': r' менее ',
+    r'>': r' более ',
+    r'&gt;': r' более ',
+    r'„': '"',
     r'&amp;': r'&',
     r'&quot;': r'"',
     r'&ndash;': r'–',
+    r' & ': r' and ',  #
+    r'&id=': r'_id=',
+    r'<->': r'↔',
     r'##### ': r'',
     r'\\\\\\\\': r'\\',
     r'  ': r' ',
     r'——': r'-',
     r'—': r'-',
-    r'/': r'',
+    #r'/': r'',
     r'\^': r'',
     r'^': r'',
     r'±': r'+'
@@ -54,3 +62,33 @@ def read_negative(filename, features=False):
         return pd.read_pickle(filename + '.neg.features')
     return pd.read_json(filename + '.json.neg')
     
+def prepare_text(text):
+    text = text.replace('  \n', '#####')
+    text = text.replace(' \n', '#####')
+    text = text + '#####'
+    text = text.replace('#####', '\n')
+    text_html_map = {
+        '\n': r' ',
+        '&gt;': r'>',
+        '&lt;': r'<',
+        '&amp;': r'&',
+        '&quot;': r'"',
+        '&ndash;': r'–',
+        '##### ': r'',
+        '\\\\\\\\': r'\\',
+        '   ': r' ',
+        '  ': r' ',
+        '——': r'-',
+        '—': r'-',
+        '/': r'',
+        '\^': r'',
+        '^': r'',
+        '±': r'+',
+        'y': r'у',
+        'xc': r'хс',
+        'x': r'х'
+    }
+    for key in text_html_map.keys():
+        text = text.replace(key, text_html_map[key])
+    return text    
+

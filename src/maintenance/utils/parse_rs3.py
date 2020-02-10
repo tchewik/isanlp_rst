@@ -5,12 +5,14 @@ to relationships examples pairs.
 
 from rs3_feature_extraction import ParsedToken
 import re, sys, codecs, os, tempfile, subprocess, ntpath
+import xml
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 from argparse import ArgumentParser, FileType
 import pandas as pd
 import glob
 import copy
+
 
 OUT_PATH = 'data'
 
@@ -372,7 +374,7 @@ def get_pairs(df, text):
         text = text.replace(key, text_html_map[key])
         df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
 
-    edus = df[df.kind == 'edu'].values
+    edus = []    # df[df.kind == 'edu'].values
     
     df['id'] = df.index
     table = df.merge(df, left_on='dep_parent', right_on='id', how='inner', sort=False, right_index=True) \
@@ -471,15 +473,15 @@ def get_pairs(df, text):
 
     table.drop_duplicates(inplace=True)
     
-    edus_list = []
-    for i in range(len(edus)-1, 0, -1):
-        for j in range(i-1, 0, -1):
-            if len(edus[j][0]) > 4:
-                edus[i][0] = edus[i][0].replace(edus[j][0], '')
-        edus_list.append(edus[i][0].strip())
-    edus_list.append(edus[0][0])
+#     edus_list = []
+#     for i in range(len(edus)-1, 0, -1):
+#         for j in range(i-1, 0, -1):
+#             if len(edus[j][0]) > 4:
+#                 edus[i][0] = edus[i][0].replace(edus[j][0], '')
+#         edus_list.append(edus[i][0].strip())
+#     edus_list.append(edus[0][0])
     
-    return table, edus_list[::-1]
+    return table
 
 #######################################################################################################
 
@@ -488,7 +490,8 @@ desc = "Usage example:\n\n" + \
 parser = ArgumentParser(description=desc)
 parser.add_argument('path', nargs='+', help='Path of a file or a folder of files.')
 parser.add_argument("-r", "--root", action="store", dest="root", default="",
-                    help="optional: path to corpus root folder containing a directory dep/ and \n" + "a directory xml/ containing additional corpus formats")
+                    help="optional: path to corpus root folder containing a directory dep/ and \n" +\
+                    "a directory xml/ containing additional corpus formats")
 
 options = parser.parse_args()
 full_paths = [os.path.join(os.getcwd(), path) for path in options.path]
@@ -501,9 +504,7 @@ for path in full_paths:
 
 for rstfile in files:
     print('>>> read file', rstfile)
-
-    nodes = read_rst(rstfile, {})
-    out_graph = []
+    
     out_file = rstfile.split('/')[-1]
     if out_file.endswith("rs3"):
         out_file = out_file.replace("rs3", "json")
@@ -511,8 +512,47 @@ for rstfile in files:
         out_file = out_file + ".pkl"
         
     out_file = os.path.join(OUT_PATH, out_file)
-    print('<<< output file', out_file)
 
+
+    ### 1. save edus in <filename>.edus ##############################################################
+    
+    try:
+        xmldoc = minidom.parse(rstfile)
+    except xml.parsers.expat.ExpatError as e:
+        original = open(rstfile, 'r').read()
+
+        mapping = {
+            ' & ': ' and ',
+            '&id=': '_id=',
+            '<->': '↔'
+        }
+        
+        mapped = original
+        for key, value in mapping.items():
+            mapped = mapped.replace(key, value)
+        
+        with open(rstfile, 'w') as buffer:
+            buffer.write(mapped)
+            
+        try:
+            xmldoc = minidom.parse(rstfile)
+        except xml.parsers.expat.ExpatError as e: 
+            with open(rstfile, 'w') as f:
+                f.write(original)
+                
+            print('Error occured in file:', rstfile)
+            print(e)
+
+    edus = xmldoc.getElementsByTagName('segment')
+    with open(out_file.replace("json", "edus"), 'w') as f:
+        for edu in edus:
+            if len(edu.childNodes) > 0:
+                f.write(edu.childNodes[0].nodeValue + '\n')
+
+    ### 2. save trees in <filename>.json #############################################################
+    
+    nodes = read_rst(rstfile, {})
+    out_graph = []
     dep_root = options.root    
 
     # Add tokens to terminal nodes
@@ -680,10 +720,6 @@ for rstfile in files:
             text = f.read()
 
         df = pd.DataFrame(data, columns=['id', 'snippet', 'dep_parent', 'dep_rel', 'kind']).set_index('id')
-        new_df, new_edus = get_pairs(df, text)
+        new_df = get_pairs(df, text)
         new_df['filename'] = filename
         new_df.to_json(out_file)
-
-        with open(out_file.replace("json", "edus"), 'w') as f:
-            for edu in new_edus:
-                f.write(edu + '\n')
