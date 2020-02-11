@@ -12,6 +12,7 @@ from argparse import ArgumentParser, FileType
 import pandas as pd
 import glob
 import copy
+from file_reading import prepare_text, text_html_map
 
 
 OUT_PATH = 'data'
@@ -344,45 +345,62 @@ def get_nonspan_rel(nodes, node):
 def get_pairs(df, text):
     pd.options.mode.chained_assignment = None
     
-    text = text.replace('  \n', '#####')
-    text = text.replace(' \n', '#####')
-    text = text + '#####'
-    text = text.replace('#####', '\n')
-    text_html_map = {
-        '\n': r' ',
-        '&gt;': r'>',
-        '&lt;': r'<',
-        '&amp;': r'&',
-        '&quot;': r'"',
-        '&ndash;': r'–',
-        '##### ': r'',
-        '\\\\\\\\': r'\\',
-        '   ': r' ',
-        '  ': r' ',
-        '——': r'-',
-        '—': r'-',
-        '/': r'',
-        '\^': r'',
-        '^': r'',
-        '±': r'+',
-        'y': r'у',
-        'xc': r'хс',
-        'x': r'х'
-    }
+#     text = text.replace('  \n', '#####')
+#     text = text.replace(' \n', '#####')
+#     text = text + '#####'
+#     text = text.replace('#####', '\n')
+#     text_html_map = {
+#         '\n': r' ',
+#         '&gt;': r'>',
+#         '&lt;': r'<',
+#         '&amp;': r'&',
+#         '&quot;': r'"',
+#         '&ndash;': r'–',
+#         '##### ': r'',
+#         '\\\\\\\\': r'\\',
+#         '<': ' менее ',
+#         '&lt;': ' менее ',
+#         r'>': r' более ',
+#         r'&gt;': r' более ',
+#         r'„': '"',
+#         r'&amp;': r'&',
+#         r'&quot;': r'"',
+#         r'&ndash;': r'–',
+#         ' & ': ' and ',  #
+#         '&id=': r'_id=',
+#         '&': '_',
+#         '   ': r' ',
+#         '  ': r' ',
+#         '  ': r' ',
+#         '——': r'-',
+#         '—': r'-',
+#         #'/': r'',
+#         '\^': r'',
+#         '^': r'',
+#         '±': r'+',
+#         'y': r'у',
+#         'xc': r'хс',
+#         'x': r'х'
+#     }
 
-    for key in text_html_map.keys():
-        text = text.replace(key, text_html_map[key])
-        df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
-
-    edus = []    # df[df.kind == 'edu'].values
+#     for key in text_html_map.keys():
+#         text = text.replace(key, text_html_map[key])
+#         df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
     
+          
     df['id'] = df.index
     table = df.merge(df, left_on='dep_parent', right_on='id', how='inner', sort=False, right_index=True) \
         .drop(columns=['dep_parent_y', 'dep_rel_y', 'dep_parent_x', 'kind_x', 'kind_y']) \
         .rename(columns={"dep_rel_x": "category_id"})
+    del df
 
     table = table[table.category_id != 'ROOT']
     table = table[table.category_id != 'span']
+    
+    for key in text_html_map.keys():
+        #text = text.replace(key, text_html_map[key])
+        table['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
+        table['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
 
     def remove_prefix(text, prefix):
         if text.startswith(prefix):
@@ -396,14 +414,24 @@ def get_pairs(df, text):
     table['snippet_x'] = table['snippet_x'].apply(lambda row: row.strip())
     table['snippet_y'] = table['snippet_y'].apply(lambda row: row.strip())
     
-    def find_in_text(plain_text, row):
-        cand = plain_text.find(row.strip())
-        if cand == -1:
-            cand = plain_text.find(row.replace('  ', ' ').strip())
-        return cand
+#     def find_in_text(plain_text, row):
+#         cand = plain_text.find(row.strip())
+#         if cand == -1:
+#             cand = plain_text.find(row.replace('  ', ' ').strip())
+#         return cand
+
+    def find_in_text(plain_text, x, y):
+        cand_x = plain_text.find(x)
+        cand_y = plain_text.find(y, cand_x + len(x))
+        if cand_y - cand_x > len(x) + 3:
+            cand_x = plain_text.find(x, cand_x)
+            cand_y = plain_text.find(y, cand_x + len(x))
+        return (cand_x, cand_y)   
     
-    table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
-    table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
+    locations = table.apply(lambda row: find_in_text(text, row.snippet_x.strip(), row.snippet_y.strip()), axis=1)
+    table['loc_x'] = locations.map(lambda row: row[0])
+    table['loc_y'] = locations.map(lambda row: row[1])
+    #table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
           
     def exact_order(row):
         
@@ -452,8 +480,12 @@ def get_pairs(df, text):
     table.loc[table.category_id.str[-2:] == '_m', 'order'] = 'NN'
     table.snippet_y = table.apply(lambda row: remove_prefix(row.snippet_y.strip(), row.snippet_x.strip()), axis=1)
 
-    table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
-    table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
+    locations = table.apply(lambda row: find_in_text(text, row.snippet_x.strip(), row.snippet_y.strip()), axis=1)
+    table['loc_x'] = locations.map(lambda row: row[0])
+    table['loc_y'] = locations.map(lambda row: row[1])
+    
+#     table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
+#     table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
     #table['order'] = table.apply(lambda row: exact_order(row), axis=1)
     table = table[table.loc_x != -1]
     table = table[table.loc_y != -1]
@@ -713,12 +745,12 @@ for rstfile in files:
         for node in out_graph:
             data.append(node.to_row())
 
-        filename = '.'.join(out_file.split('/')[-1].split('.')[:-1])  # '.'.join - for science texts, use .split('.')[0] for news/blogs (ToDO:)
+        filename = '.'.join(out_file.split('/')[-1].split('.')[:-1])
         textfile = '/'.join(rstfile.split('/')[:-1]).replace('rs3', 'txt') + '/' + filename + '.txt'
 
         with open(textfile, 'r') as f:
-            text = f.read()
-
+            text = prepare_text(f.read())
+        
         df = pd.DataFrame(data, columns=['id', 'snippet', 'dep_parent', 'dep_rel', 'kind']).set_index('id')
         new_df = get_pairs(df, text)
         new_df['filename'] = filename

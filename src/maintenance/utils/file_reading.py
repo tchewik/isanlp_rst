@@ -15,6 +15,7 @@ text_html_map = {
     r'&ndash;': r'–',
     r' & ': r' and ',  #
     r'&id=': r'_id=',
+    r'&': r'_',
     r'<->': r'↔',
     r'##### ': r'',
     r'\\\\\\\\': r'\\',
@@ -76,19 +77,32 @@ def prepare_text(text):
         '&ndash;': r'–',
         '##### ': r'',
         '\\\\\\\\': r'\\',
-        '   ': r' ',
-        '  ': r' ',
+        '<': ' менее ',
+        '&lt;': ' менее ',
+        r'>': r' более ',
+        r'&gt;': r' более ',
+        r'„': '"',
+        r'&amp;': r'&',
+        r'&quot;': r'"',
+        r'&ndash;': r'–',
+        ' & ': ' and ',  #
+        '&id=': r'_id=',
+        '&': '_',
         '——': r'-',
         '—': r'-',
-        '/': r'',
+        #'/': r'',
         '\^': r'',
         '^': r'',
         '±': r'+',
         'y': r'у',
         'xc': r'хс',
-        'x': r'х'
+        'x': r'х',
     }
     for key in text_html_map.keys():
         text = text.replace(key, text_html_map[key])
+        
+    while '  ' in text:
+        text = text.replace('  ', ' ')
+
     return text    
 

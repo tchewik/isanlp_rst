@@ -135,7 +135,7 @@ class FeaturesProcessor:
         if not broken_pair.empty:
             print()
             print('found broken pair:')
-            print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y']].values)
+            print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y']].values)
             print('-----------------------')
             df = df[df.snippet_x_locs.map(len) > 0]
         
@@ -284,9 +284,12 @@ class FeaturesProcessor:
             print('9\t', end="", flush=True)
 
         # vectorize
+        def dummy(text):
+            return text
+
         df.reset_index(drop=True, inplace=True)
-        tf_idf_x = self.vectorizer.transform(df['snippet_x'].map(lambda row: ' '.join(nltk.tokenize.casual_tokenize(row))))
-        tf_idf_y = self.vectorizer.transform(df['snippet_y'].map(lambda row: ' '.join(nltk.tokenize.casual_tokenize(row))))
+        tf_idf_x = self.vectorizer.transform(df['tokens_x'].map(lambda row: [word.lower() for word in row]))
+        tf_idf_y = self.vectorizer.transform(df['tokens_y'].map(lambda row: [word.lower() for word in row]))
         df['cos_tf_idf_dist'] = paired_cosine_distances(tf_idf_x, tf_idf_y)
         df['ang_cos_tf_idf_sim'] = 1. - np.arccos(df['cos_tf_idf_dist']) * 2. / np.pi
 
