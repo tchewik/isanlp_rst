@@ -1,26 +1,26 @@
-weighted f1:  0.5257588933931949
-macro f1:  0.3810695760278998
-accuracy:  0.5364317330609465
+weighted f1:  0.5254312716683277
+macro f1:  0.4513386048958227
+accuracy:  0.5335301560522986
 
                 precision    recall  f1-score   support
 
- attribution_r       0.71      0.78      0.74       253
-     purpose_r       0.70      0.74      0.72       205
-    contrast_m       0.71      0.65      0.68       398
-   condition_r       0.57      0.68      0.62       317
-       joint_m       0.57      0.61      0.59      1322
- elaboration_r       0.50      0.66      0.57      1337
-       cause_r       0.50      0.46      0.48       485
- preparation_r       0.50      0.39      0.44       319
-   same-unit_m       0.52      0.30      0.38       199
-    sequence_m       0.60      0.27      0.38       304
-  evaluation_r       0.38      0.28      0.32       347
-    evidence_r       0.46      0.19      0.27       140
-  comparison_m       0.24      0.16      0.19       102
-  background_r       0.16      0.08      0.10       146
-  concession_r       0.00      0.00      0.00         0
- restatement_m       0.00      0.00      0.00         0
-solutionhood_r       0.00      0.00      0.00         0
+     purpose_r       0.75      0.75      0.75       296
+ attribution_r       0.72      0.74      0.73       321
+    contrast_m       0.69      0.60      0.64       490
+   condition_r       0.59      0.64      0.61       447
+       joint_m       0.61      0.61      0.61      1540
+ elaboration_r       0.48      0.63      0.55      1575
+  concession_r       0.56      0.53      0.54        97
+       cause_r       0.48      0.49      0.48       569
+ restatement_m       0.60      0.39      0.47        64
+ preparation_r       0.51      0.37      0.43       346
+solutionhood_r       0.50      0.33      0.40        99
+   same-unit_m       0.51      0.31      0.38       261
+    sequence_m       0.40      0.31      0.35       212
+  evaluation_r       0.30      0.32      0.31       359
+    evidence_r       0.29      0.17      0.21       161
+  comparison_m       0.19      0.11      0.14       120
+  background_r       0.08      0.04      0.06       156
 
-     macro avg       0.42      0.37      0.38      5874
-  weighted avg       0.53      0.54      0.53      5874
+     macro avg       0.49      0.43      0.45      7113
+  weighted avg       0.53      0.53      0.53      7113

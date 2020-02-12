@@ -20,6 +20,7 @@ from sklearn.metrics.pairwise import paired_cosine_distances
 from sklearn.metrics.pairwise import paired_euclidean_distances
 from sklearn.metrics.pairwise import paired_manhattan_distances
 from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words, count_words_x, count_words_y, pairs_words, relations_related
+from utils.count_vectorizer import MyCountVectorizer
 from dostoevsky.tokenization import RegexTokenizer
 from dostoevsky.models import FastTextSocialNetworkModel
 

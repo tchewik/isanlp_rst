@@ -3,7 +3,7 @@ import glob
 import random
 
 
-def split_data(path, ratio=0.2, seed=42):
+def split_data(path, ratio=0.2, seed=45):
     #files = sorted(glob.glob(os.path.join(path, '*.edus')), key=lambda s: int(s.split('.')[-2][-1]))
     files = glob.glob(os.path.join(path, '*.edus'))
     
