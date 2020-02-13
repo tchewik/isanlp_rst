@@ -84,7 +84,7 @@ class FeaturesProcessor:
             
     def _find_y(self, snippet_x, snippet_y, loc_x):
         result = self.annot_text.find(snippet_y, loc_x + len(snippet_x))
-        if result < 0:
+        if result < 1:
             result = self.annot_text.find(snippet_y)
         return result
 
@@ -136,7 +136,7 @@ class FeaturesProcessor:
         if not broken_pair.empty:
             print()
             print('found broken pair:')
-            print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y']].values)
+            print(df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values)
             print('-----------------------')
             df = df[df.snippet_x_locs.map(len) > 0]
         
