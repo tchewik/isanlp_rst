@@ -1,57 +1,107 @@
-from isanlp.annotation_rst import DiscourseUnit
 import pandas as pd
+from isanlp.annotation_rst import DiscourseUnit
 
 
 class RSTTreePredictor:
-    def __init__(self, features_processor, relation_predictor, label_predictor):
+    """
+    Contains classifiers and processors needed for tree building.
+    """
+
+    def __init__(self, features_processor, relation_predictor, label_predictor, nuclearity_predictor):
         self.features_processor = features_processor
         self.relation_predictor = relation_predictor
         self.label_predictor = label_predictor
         if self.label_predictor:
             self.labels = self.label_predictor.classes_
+
+        self.nuclearity_predictor = nuclearity_predictor
+        if self.nuclearity_predictor:
+            self.nuclearities = self.nuclearity_predictor.classes_
+
         self.genre = None
-
-    def predict_label(self, features):
-        if not self.label_predictor:
-            return 'relation'
-
-        return self.label_predictor.predict(features)
 
 
 class GoldTreePredictor(RSTTreePredictor):
+    """
+    Contains classifiers and processors needed for gold tree building from corpus.
+    """
+
     def __init__(self, corpus):
-        RSTTreePredictor.__init__(self, None, None, None)
+        """
+        :param pandas.DataFrame corpus:
+            columns=['snippet_x', 'snippet_y', 'category_id']
+            rows=[all the relations pairs from corpus]
+        """
+        RSTTreePredictor.__init__(self, None, None, None, None)
         self.corpus = corpus
 
     def extract_features(self, *args):
-        return [args[0].text, args[1].text]
+        return pd.DataFrame({
+            'snippet_x': [args[0].text, ],
+            'snippet_y': [args[1].text, ]
+        })
+
+    def initialize_features(self, *args):
+        return pd.DataFrame({
+            'snippet_x': [args[0][i].text for i in range(len(args[0]) - 1)],
+            'snippet_y': [args[0][i].text for i in range(1, len(args[0]))]
+        })
 
     def predict_pair_proba(self, features):
         def _check_snippet_pair_in_dataset(left_snippet, right_snippet):
-            return ((((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet)).sum(
+            return float((((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet)).sum(
                 axis=0) != 0)
-                    or ((self.corpus.snippet_y == left_snippet) & (self.corpus.snippet_x == right_snippet)).sum(
-                        axis=0) != 0)
+                         or ((self.corpus.snippet_y == left_snippet) & (self.corpus.snippet_x == right_snippet)).sum(
+                axis=0) != 0)
 
-        left_snippet, right_snippet = features
-        return float(_check_snippet_pair_in_dataset(left_snippet, right_snippet))
+        result = features.apply(lambda row: _check_snippet_pair_in_dataset(row.snippet_x, row.snippet_y), axis=1)
+        return result.values.tolist()
 
     def predict_label(self, features):
-        if not self.label_predictor:
-            return 'relation'
+        def _get_label(left_snippet, right_snippet):
+            label = self.corpus[
+                ((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet))].category_id.values
+            if label.size == 0:
+                return 'relation'
+
+            return label[0]
+
+        if type(features) == pd.Series:
+            result = _get_label(features.loc['snippet_x'], features.loc['snippet_y'])
+            return result
+        else:
+            result = features.apply(lambda row: _get_label(row.snippet_x, row.snippet_y), axis=1)
+            return result.values.tolist()
+
+    def predict_nuclearity(self, features):
+        def _get_nuclearity(left_snippet, right_snippet):
+            nuclearity = self.corpus[
+                ((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet))].order.values
+            if nuclearity.size == 0:
+                return '_'
+
+        if type(features) == pd.Series:
+            result = _get_nuclearity(features.loc['snippet_x'], features.loc['snippet_y'])
+            return result
+        else:
+            result = features.apply(lambda row: _get_nuclearity(row.snippet_x, row.snippet_y), axis=1)
+            return result.values.tolist()
 
 
 class CustomTreePredictor(RSTTreePredictor):
-    def __init__(self, features_processor, relation_predictor, label_predictor=None):
-        RSTTreePredictor.__init__(self, features_processor, relation_predictor, label_predictor)
+    """
+    Contains trained classifiers and feature processors needed for tree prediction.
+    """
+
+    def __init__(self, features_processor, relation_predictor, label_predictor=None, nuclearity_predictor=None):
+        RSTTreePredictor.__init__(self, features_processor, relation_predictor, label_predictor, nuclearity_predictor)
 
     def extract_features(self, left_node: DiscourseUnit, right_node: DiscourseUnit,
-                         annot_text, annot_tokens, annot_sentences, annot_postag, annot_morph, annot_lemma,
+                         annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                          annot_syntax_dep_tree):
         pair = pd.DataFrame({
             'snippet_x': [left_node.text.strip()],
             'snippet_y': [right_node.text.strip()],
-            #'genre': self.genre
         })
 
         try:
@@ -66,5 +116,54 @@ class CustomTreePredictor(RSTTreePredictor):
                 f.write(annot_text)
             return -1
 
+    def initialize_features(self, nodes,
+                            annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                            annot_syntax_dep_tree):
+        pairs = pd.DataFrame({
+            'snippet_x': [node.text.strip() for node in nodes[:-1]],
+            'snippet_y': [node.text.strip() for node in nodes[1:]]
+        })
+
+        try:
+            features = self.features_processor(pairs, annot_text=annot_text,
+                                               annot_tokens=annot_tokens, annot_sentences=annot_sentences,
+                                               annot_postag=annot_postag, annot_morph=annot_morph,
+                                               annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
+            return features
+        except IndexError:
+            with open('errors.log', 'w+') as f:
+                f.write(str(pair.values))
+                f.write(annot_text)
+            return -1
+
     def predict_pair_proba(self, features):
-        return self.relation_predictor.predict_proba(features)[0][1]
+        if type(features) == pd.DataFrame:
+            probas = self.relation_predictor.predict_proba(features)
+            #return list(map(lambda proba: proba[1], probas))
+            same_sentence_bonus = list(map(lambda value: float(value) * 0.5, list(features['same_sentence'] == 1)))
+            return [probas[i][1] + same_sentence_bonus[i] for i in range(len(probas))]
+
+        if type(features[0]) != float:
+            return self.relation_predictor.predict_proba(features)[0][1]
+        else:
+            return self.relation_predictor.predict_proba([features])[0][1]
+
+    def predict_label(self, features):
+        if not self.label_predictor:
+            return 'relation'
+
+        if type(features) == pd.DataFrame:
+            return self.label_predictor.predict(features)
+
+        if type(features) == pd.Series:
+            return self.label_predictor.predict(features.to_frame().T)[0]
+
+    def predict_nuclearity(self, features):
+        if not self.nuclearity_predictor:
+            return 'unavail'
+
+        if type(features) == pd.DataFrame:
+            return self.nuclearity_predictor.predict(features)
+
+        if type(features) == pd.Series:
+            return self.nuclearity_predictor.predict(features.to_frame().T)[0]

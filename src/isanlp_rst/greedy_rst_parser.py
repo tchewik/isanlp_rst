@@ -1,5 +1,5 @@
 import numpy as np
-import sys
+import pandas as pd
 
 from isanlp.annotation_rst import DiscourseUnit
 
@@ -13,7 +13,7 @@ class GreedyRSTParser:
         self.tree_predictor = tree_predictor
         self.forest_threshold = forest_threshold
 
-    def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_postag, annot_morph, annot_lemma,
+    def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree, genre=None):
         """
         :param list edus: DiscourseUnit
@@ -26,45 +26,39 @@ class GreedyRSTParser:
         :return: list of DiscourseUnit containing each extracted tree
         """
 
-        def to_merge(scores):
-            return np.argmax(np.array(scores))
+        def to_merge(_scores):
+            return np.argmax(np.array(_scores))
 
         self.tree_predictor.genre = genre
 
         nodes = edus
-        
-        for edu in nodes:
-            print(edu, file=sys.stderr)
-        
+
         max_id = edus[-1].id
 
         # initialize scores
-        features = [
-            self.tree_predictor.extract_features(nodes[i], nodes[i + 1], annot_text, annot_tokens,
-                                                 annot_sentences,
-                                                 annot_postag, annot_morph, annot_lemma,
-                                                 annot_syntax_dep_tree)
-            for i in range(len(nodes) - 1)]
+        features = self.tree_predictor.initialize_features(nodes, 
+                                                           annot_text, annot_tokens,
+                                                           annot_sentences,
+                                                           annot_lemma, annot_morph, annot_postag,
+                                                           annot_syntax_dep_tree)
 
-        scores = [self.tree_predictor.predict_pair_proba(features[i]) for i in range(len(nodes) - 1)]
+        scores = self.tree_predictor.predict_pair_proba(features)
 
         while len(nodes) > 2 and any([score > self.forest_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
-            relation = self.tree_predictor.predict_label(features)
 
             # make the new node by merging node[j] + node[j+1]
             temp = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[j],
                 right=nodes[j + 1],
-                relation=relation,
+                relation=self.tree_predictor.predict_label(features.iloc[j]),
+                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j]),
                 proba=scores[j],
-                text=nodes[j].text + nodes[j + 1].text  #annot_text[nodes[j].start:nodes[j+1].end]
+                text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
             )
-            
-            print(temp, file=sys.stderr)
-            
+
             max_id += 1
 
             # modify the node list
@@ -72,32 +66,34 @@ class GreedyRSTParser:
 
             # modify the scores list
             if j == 0:
-                features = self.tree_predictor.extract_features(nodes[j], nodes[j + 1],
-                                                                annot_text, annot_tokens, annot_sentences, annot_postag,
-                                                                annot_morph, annot_lemma, annot_syntax_dep_tree)
-                predicted = self.tree_predictor.predict_pair_proba(features)
-
-                scores = [predicted] + scores[j + 2:]
+                _features = self.tree_predictor.extract_features(nodes[j], nodes[j + 1],
+                                                                 annot_text, annot_tokens,
+                                                                 annot_sentences,
+                                                                 annot_lemma, annot_morph, annot_postag,
+                                                                 annot_syntax_dep_tree)
+                _scores = self.tree_predictor.predict_pair_proba(_features)
+                scores = _scores + scores[j + 2:]
+                features = pd.concat([_features, features.iloc[j + 2:]])
 
             elif j + 1 < len(nodes):
-                features_left = self.tree_predictor.extract_features(nodes[j - 1], nodes[j], annot_text, annot_tokens,
-                                                                     annot_sentences, annot_postag, annot_morph,
-                                                                     annot_lemma, annot_syntax_dep_tree)
-                predicted_left = self.tree_predictor.predict_pair_proba(features_left)
-
-                features_right = self.tree_predictor.extract_features(nodes[j], nodes[j + 1], annot_text, annot_tokens,
-                                                                      annot_sentences, annot_postag, annot_morph,
-                                                                      annot_lemma, annot_syntax_dep_tree)
-                predicted_right = self.tree_predictor.predict_pair_proba(features_right)
-
-                scores = scores[:j - 1] + [predicted_left] + [predicted_right] + scores[j + 2:]
+                _features = self.tree_predictor.initialize_features([nodes[j - 1], nodes[j], nodes[j + 1]],
+                                                                    annot_text, annot_tokens,
+                                                                    annot_sentences,
+                                                                    annot_lemma, annot_morph, annot_postag,
+                                                                    annot_syntax_dep_tree)
+                _scores = self.tree_predictor.predict_pair_proba(_features)
+                features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
+                scores = scores[:j - 1] + _scores + scores[j + 2:]
 
             else:
-                features = self.tree_predictor.extract_features(nodes[j - 1], nodes[j],
-                                                                annot_text, annot_tokens, annot_sentences, annot_postag,
-                                                                annot_morph, annot_lemma, annot_syntax_dep_tree)
-                predicted = self.tree_predictor.predict_pair_proba(features)
-                scores = scores[:j - 1] + [predicted]
+                _features = self.tree_predictor.extract_features(nodes[j - 1], nodes[j],
+                                                                 annot_text, annot_tokens,
+                                                                 annot_sentences,
+                                                                 annot_lemma, annot_morph, annot_postag,
+                                                                 annot_syntax_dep_tree)
+                _scores = self.tree_predictor.predict_pair_proba(_features)
+                scores = scores[:j - 1] + _scores
+                features = pd.concat([features.iloc[:j - 1], _features])
 
         if len(scores) == 1 and scores[0] > self.forest_threshold:
             root = DiscourseUnit(
