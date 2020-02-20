@@ -46,7 +46,7 @@ class FeaturesProcessorSegmentation:
         embed_left = np.stack(features.left_token.map(self._get_embeddings).values)
         embed_lemma = np.stack(features.token.map(self._get_embeddings).values)
         embed_right = np.stack(features.right_token.map(self._get_embeddings).values)
-        return [embed_lemma, embed_left, embed_right, one_hot_features]
+        return [embed_lemma, embed_left, embed_right, one_hot_features], features.start_sentence.values
 
     def _extract_triplets(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag,
                           annot_syntax_dep_tree):

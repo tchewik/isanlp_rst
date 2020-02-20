@@ -1,6 +1,6 @@
 class DiscourseUnit:
     def __init__(self, id, left=None, right=None, text='', start=None, end=None,
-                 orig_text=None, relation=None, nuclearity=None, proba=1.):
+                 orig_text=None, relation='', nuclearity='', proba=1.):
         """
         :param int id:
         :param DiscourseUnit left:

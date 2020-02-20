@@ -79,6 +79,6 @@ def convert_annotation(pb_ann):
     elif obj.DESCRIPTOR == pb_rst.DiscourseUnit.DESCRIPTOR:
         if not obj.relation:
             return None
-        return ann_rst.DiscourseUnit(obj.id, convert_annotation(obj.left), convert_annotation(obj.right), obj.text, obj.start, obj.end, obj.relation, obj.nuclearity, float(obj.proba)) 
+        return ann_rst.DiscourseUnit(id=obj.id, left=convert_annotation(obj.left), right=convert_annotation(obj.right), text=obj.text, start=obj.start, end=obj.end, relation=obj.relation, nuclearity=obj.nuclearity, proba=float(obj.proba))
     else:
         raise TypeError()

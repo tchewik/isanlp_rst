@@ -29,11 +29,9 @@ class ProcessorRST:
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
-        print('START SEGMENTATION:')
+
         edus = self.segmentator(annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag,
                  annot_syntax_dep_tree)
-        
-        print('EDUS:', edus)
 
         tree = self.parser(edus,
                            annot_text,

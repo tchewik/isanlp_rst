@@ -137,15 +137,18 @@ class CustomTreePredictor(RSTTreePredictor):
             return -1
 
     def predict_pair_proba(self, features):
+        _same_sentence_bonus = 0.5
+        
         if type(features) == pd.DataFrame:
             probas = self.relation_predictor.predict_proba(features)
-            #return list(map(lambda proba: proba[1], probas))
-            same_sentence_bonus = list(map(lambda value: float(value) * 0.5, list(features['same_sentence'] == 1)))
+            same_sentence_bonus = list(map(lambda value: float(value) * _same_sentence_bonus, 
+                                           list(features['same_sentence'] == 1)))
             return [probas[i][1] + same_sentence_bonus[i] for i in range(len(probas))]
 
-        if type(features[0]) != float:
-            return self.relation_predictor.predict_proba(features)[0][1]
-        else:
+        if type(features) == pd.Series:
+            return self.relation_predictor.predict_proba(features)[0][1] + (features.loc['same_sentence'] == 1) * _same_sentence_bonus
+            
+        if type(features) == list:
             return self.relation_predictor.predict_proba([features])[0][1]
 
     def predict_label(self, features):
