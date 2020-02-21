@@ -5,13 +5,13 @@ from isanlp.annotation_rst import DiscourseUnit
 
 
 class GreedyRSTParser:
-    def __init__(self, tree_predictor, forest_threshold=0.05):
+    def __init__(self, tree_predictor, confidence_threshold=0.05):
         """
         :param RSTTreePredictor tree_predictor:
-        :param float forest_threshold: minimum relation probability to append the pair into the tree
+        :param float confidence_threshold: minimum relation probability to append the pair into the tree
         """
         self.tree_predictor = tree_predictor
-        self.forest_threshold = forest_threshold
+        self._confidence_threshold = confidence_threshold
 
     def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree, genre=None):
@@ -44,19 +44,20 @@ class GreedyRSTParser:
 
         scores = self.tree_predictor.predict_pair_proba(features)
 
-        while len(nodes) > 2 and any([score > self.forest_threshold for score in scores]):
+        while len(nodes) > 2 and any([score > self._confidence_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
 
             # make the new node by merging node[j] + node[j+1]
+            _label = self.tree_predictor.predict_label(features.iloc[j])
             temp = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[j],
                 right=nodes[j + 1],
-                relation=self.tree_predictor.predict_label(features.iloc[j]),
-                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j]),
+                relation=_label,
+                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j], _label),
                 proba=scores[j],
-                text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
+                text=annot_text[nodes[j].start:nodes[j + 1].end + 1].strip()
             )
 
             max_id += 1
@@ -95,13 +96,16 @@ class GreedyRSTParser:
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 
-        if len(scores) == 1 and scores[0] > self.forest_threshold:
+        if len(scores) == 1 and scores[0] > self._confidence_threshold:
+            _label = self.tree_predictor.predict_label(features)[0]
             root = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[0],
                 right=nodes[1],
-                relation='root',
-                proba=scores[0]
+                relation=_label,
+                nuclearity=self.tree_predictor.predict_nuclearity(features, _label)[0],
+                proba=scores[0],
+                text=annot_text[nodes[0].start:nodes[1].end + 1].strip()
             )
             nodes = [root]
 

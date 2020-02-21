@@ -23,12 +23,21 @@ class DiscourseUnit:
 
         if self.left:
             self.start = left.start
-            self.end = right.end + 1
+            self.end = right.end
 
         if orig_text:
-            self.text = orig_text[self.start:self.end].strip()
+            self.text = orig_text[self.start:self.end + 1].strip()
         else:
             self.text = text.strip()
 
     def __str__(self):
-        return f"id: {self.id}\ntext: {self.text}\nrelation: {self.relation}\nleft: {self.left.text if self.left else None}\nright: {self.right.text if self.right else None}\nstart: {self.start}\nend: {self.end}"
+        result = f"id: {self.id}\n"
+        result += f"text: {self.text}\n"
+        result += f"proba: {self.proba}\n"
+        result += f"relation: {self.relation}\n"
+        result += f"nuclearity: {self.nuclearity}\n"
+        result += f"left: {self.left.text if self.left else None}\n"
+        result += f"right: {self.right.text if self.right else None}\n"
+        result += f"start: {self.start}\n"
+        result += f"end: {self.end}"
+        return result

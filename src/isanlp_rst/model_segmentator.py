@@ -17,6 +17,8 @@ sess = tf.compat.v1.Session()
 class ModelSegmentator:
     def __init__(self, model_dir_path):
         self._features_processor = FeaturesProcessorSegmentation(model_dir_path)
+        self._confidence_threshold = 0.5
+        
         with sess.as_default():
             with graph.as_default():
                 self._model = load_model(os.path.join(model_dir_path, 'segmentator', 'neural_model.h5'))
@@ -29,7 +31,7 @@ class ModelSegmentator:
         features, sentence_boundaries = self._features_processor(*args)
         return self._build_discourse_units(args[0], args[1], self._predict(features, sentence_boundaries))
 
-    def _predict(self, features, sentence_boundaries, confidence_threshold=0.5):
+    def _predict(self, features, sentence_boundaries):
         """
         :param list features: features to feed directly into the model
         :param np.array sentence_boundaries: 1D binary array of sentence boundary markers for each token
@@ -41,7 +43,7 @@ class ModelSegmentator:
             with graph.as_default():
                 predictions = self._model.predict(features)
                 
-        predictions = predictions[:,1] > confidence_threshold
+        predictions = predictions[:,1] > self._confidence_threshold
         augmented_predictions = predictions.astype(int) | sentence_boundaries.astype(int)
         return np.argwhere(augmented_predictions)[:, 0]
 
@@ -59,7 +61,7 @@ class ModelSegmentator:
             for i in range(0, len(numbers)-1):
                 new_edu = DiscourseUnit(i,
                                         start=tokens[numbers[i]].begin,
-                                        end=tokens[numbers[i+1]].begin-1,
+                                        end=tokens[numbers[i+1]].begin - 1,
                                         text=text[tokens[numbers[i]].begin:tokens[numbers[i+1]].begin],
                                         relation='elementary')
                 edus.append(new_edu)

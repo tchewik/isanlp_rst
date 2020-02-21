@@ -25,15 +25,18 @@ class ProcessorRST:
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
 
-        self.parser = GreedyRSTParser(self._tree_predictor, forest_threshold=0.1)
+        self.parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.1)
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
 
         edus = self.segmentator(annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag,
                  annot_syntax_dep_tree)
+        
+        if len(edus) == 1:
+            return []
 
-        tree = self.parser(edus,
+        trees = self.parser(edus,
                            annot_text,
                            annot_tokens,
                            annot_sentences,
@@ -42,4 +45,4 @@ class ProcessorRST:
                            annot_postag,
                            annot_syntax_dep_tree)
 
-        return tree
+        return trees

@@ -161,9 +161,21 @@ class CustomTreePredictor(RSTTreePredictor):
         if type(features) == pd.Series:
             return self.label_predictor.predict(features.to_frame().T)[0]
 
-    def predict_nuclearity(self, features):
-        if not self.nuclearity_predictor:
-            return 'unavail'
+    def predict_nuclearity(self, features, label='_'):
+        result = '_'
+        
+        if label:
+            if label[-1] == 'm':
+                result = 'NN'
+            elif label == 'preparation_r':
+                result = 'SN'
+        
+        if not self.nuclearity_predictor:            
+            if type(features) == pd.DataFrame:
+                return [result]
+            
+            if type(features) == pd.Series:
+                return result
 
         if type(features) == pd.DataFrame:
             return self.nuclearity_predictor.predict(features)
