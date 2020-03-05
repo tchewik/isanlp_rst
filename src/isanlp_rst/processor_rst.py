@@ -1,8 +1,9 @@
 import os
 
+from allennlp_segmentator import AllenNLPSegmentator
 from features_processor_default import FeaturesProcessor
 from greedy_rst_parser import GreedyRSTParser
-from model_segmentator import ModelSegmentator
+#from model_segmentator import ModelSegmentator
 from rst_tree_predictor import CustomTreePredictor
 from sklearn_classifier import SklearnClassifier
 
@@ -11,7 +12,8 @@ class ProcessorRST:
     def __init__(self, model_dir_path):
         self._model_dir_path = model_dir_path
 
-        self.segmentator = ModelSegmentator(self._model_dir_path)
+        #self.segmentator = ModelSegmentator(self._model_dir_path)
+        self.segmentator = AllenNLPSegmentator(self._model_dir_path)
 
         self._features_processor = FeaturesProcessor(self._model_dir_path)
         self._relation_predictor = SklearnClassifier(

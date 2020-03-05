@@ -17,6 +17,9 @@ RUN dostoevsky download fasttext-social-network-model
 
 RUN pip install setuptools==41.0.1 scipy scikit-learn==0.22.1 gensim==3.6.0 smart-open==1.7.0 tensorflow==2.1.0 keras h5py tensorflow-hub pandas nltk imbalanced-learn catboost
 
+RUN pip install allennlp==0.9.0
+RUN python -c "from allennlp.predictors import Predictor; predictor = Predictor.from_path('models/tony_segmentator/model.tar.gz')"
+
 RUN pip install -U git+https://github.com/IINemo/isanlp.git@discourse
 
 RUN python -c "import nltk; nltk.download('stopwords')"
