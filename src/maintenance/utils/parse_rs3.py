@@ -552,11 +552,19 @@ for rstfile in files:
         xmldoc = minidom.parse(rstfile)
     except xml.parsers.expat.ExpatError as e:
         original = open(rstfile, 'r').read()
-
+        
         mapping = {
-            ' & ': ' and ',
-            '&id=': '_id=',
-            '<->': '↔'
+            r'&amp;': r'&',
+            r'&quot;': r'"',
+            r'&ndash;': r'–',
+            r'&ouml;': r'o',
+            r'&hellip;': r'...',
+            r'&eacute;': r'e',
+            r'&aacute;': r'a',
+            r'&rsquo;': r"'",
+            r'&lsquo;': r"'",
+            r' & ': r' and ',  #
+            r'&id=': r'_id=',
         }
         
         mapped = original

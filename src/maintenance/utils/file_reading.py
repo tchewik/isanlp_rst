@@ -13,9 +13,15 @@ text_html_map = {
     r'&amp;': r'&',
     r'&quot;': r'"',
     r'&ndash;': r'–',
+    r'&ouml;': r'o',
+    r'&hellip;': r'...',
+    r'&eacute;': r'e',
+    r'&aacute;': r'a',
+    r'&rsquo;': r"'",
+    r'&lsquo;': r"'",
     r' & ': r' and ',  #
     r'&id=': r'_id=',
-    r'&': r'_',
+    #r'&': r'_',
     r'<->': r'↔',
     r'##### ': r'',
     r'\\\\\\\\': r'\\',
@@ -28,6 +34,10 @@ text_html_map = {
     r'±': r'+'
 }
 
+second_map = {
+    r'&': r'_',
+}
+
 def read_edus(filename):
     edus = []
     with open(filename + '.edus', 'r') as f:
@@ -35,13 +45,14 @@ def read_edus(filename):
             edu = str(line.strip())
             for key, value in text_html_map.items():
                 edu = edu.replace(key, value)
+            for key, value in second_map.items():
+                edu = edu.replace(key, value)
             edus.append(edu)
     return edus
 
 def read_annotation(filename):
     annot = pd.read_pickle(filename + '.annot.pkl')
-    for key, value in text_html_map.items():
-        annot['text'] = annot['text'].replace(key, value)
+    annot['text'] = prepare_text(annot['text'])
     return annot
 
 def read_gold(filename, features=False):
@@ -52,6 +63,10 @@ def read_gold(filename, features=False):
         for key in text_html_map.keys():
             df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
             df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
+            
+        for key in second_map.keys():
+            df['snippet_x'].replace(key, second_map[key], regex=True, inplace=True)
+            df['snippet_y'].replace(key, second_map[key], regex=True, inplace=True)
             
         df = df[df['snippet_x'].map(len) > 0]
         df = df[df['snippet_y'].map(len) > 0]
@@ -85,9 +100,15 @@ def prepare_text(text):
         r'&amp;': r'&',
         r'&quot;': r'"',
         r'&ndash;': r'–',
+        r'&ouml;': r'o',
+        r'&hellip;': r'...',
+        r'&eacute;': r'e',
+        r'&aacute;': r'a',
+        r'&rsquo;': r"'",
+        r'&lsquo;': r"'",
         ' & ': ' and ',  #
         '&id=': r'_id=',
-        '&': '_',
+#         '&': '_',
         '——': r'-',
         '—': r'-',
         #'/': r'',
@@ -98,8 +119,12 @@ def prepare_text(text):
         'xc': r'хс',
         'x': r'х',
     }
+    
     for key in text_html_map.keys():
         text = text.replace(key, text_html_map[key])
+        
+    for key in second_map.keys():
+        text = text.replace(key, second_map[key])
         
     while '  ' in text:
         text = text.replace('  ', ' ')
