@@ -1,7 +1,3 @@
-File: rus.rst.rrt_test.conll
-o Total tokens: 99113
-o Gold EDUs: 8625
-o Predicted EDUs: 7632
-o Precision: 0.8587526205450734
-o Recall: 0.7598840579710145
-o F-Score: 0.8062988251214862
+Pr: 0.8953577840471916
+Re: 0.8121437710829359
+F1: 0.8517230863068008
