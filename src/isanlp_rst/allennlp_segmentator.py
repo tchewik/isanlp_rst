@@ -29,7 +29,7 @@ class AllenNLPSegmentator:
         result = []
         for sentence in sentences:
             result += self.predictor.predict(
-                ' '.join([self.prepare_token(token.text) for token in tokens[sentence.begin:sentence.end]])
+                ' '.join([self._prepare_token(token.text) for token in tokens[sentence.begin:sentence.end]])
             )['tags']
 
         result = np.array(result)
@@ -70,3 +70,4 @@ class AllenNLPSegmentator:
         for keyword in ['www', 'http']:
             if keyword in token:
                 return '_html_'
+        return token
