@@ -28,36 +28,47 @@ class ProcessorRST:
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
 
-        self.parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.1)
+        self.paragraph_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.1)
+        self.document_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.2)
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
 
         # 1. Split text and annotations on paragraphs and process separately
         dus = []
-        for chunk in self.split_by_paragraphs(
+        start_id = 0
+        
+        chunks = self.split_by_paragraphs(
                 annot_text,
                 annot_tokens,
                 annot_sentences,
                 annot_lemma,
                 annot_morph,
                 annot_postag,
-                annot_syntax_dep_tree):
+                annot_syntax_dep_tree)
+        
+        for chunk in chunks:
+            
+            edus = self.segmentator(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
+                                    chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
 
-            edus = self.segmentator(chunk['text'], chunk['tokens'], chunk['sentences'], chunk['lemma'],
-                                    chunk['postag'], chunk['syntax_dep_tree'])
-
+            for edu in edus:
+                print('::', edu)
+                
             if len(edus) == 1:
                 dus += edus
+                start_id = edus[-1].id + 1
 
             elif len(edus) > 1:
-                trees = self.parser(edus,
-                                    chunk['text'], chunk['tokens'], chunk['sentences'], chunk['lemma'],
-                                    chunk['morph'], chunk['postag'], chunk['syntax_dep_tree'])
+                trees = self.paragraph_parser(edus,
+                                              annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
+                                              chunk['morph'], chunk['postag'], chunk['syntax_dep_tree'])
+
                 dus += trees
+                start_id = dus[-1].id + 1
 
         # 2. Process paragraphs into the document-level annotation
-        trees = self.parser(dus,
+        trees = self.document_parser(dus,
                             annot_text,
                             annot_tokens,
                             annot_sentences,
@@ -68,118 +79,86 @@ class ProcessorRST:
 
         return trees
 
+    def split_by_paragraphs(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                 annot_syntax_dep_tree):
 
-    def split_by_paragraphs(self,
-                            annot_text,
-                            annot_tokens,
-                            annot_sentences,
-                            annot_lemma,
-                            annot_morph,
-                            annot_postag,
-                            annot_syntax_dep_tree):
-        chunks = []
-        previous_boundary = 0
-        previous_token = 0
-        previous_sentence = 0
-        current_sentence = 0
-        previous_intersentence_boundary = -1
+        def split_on_two(sents, boundary):
+            list_sum = lambda l: sum([len(sublist) for sublist in l])
 
-        for i, token in enumerate(annot_tokens[:-1]):
+            i = 1
+            while list_sum(sents[:i]) < boundary and i < len(sents):
+                i += 1
 
-            if '\n' in annot_text[token.end:annot_tokens[i + 1].begin]:
-                current_sentence = \
-                    [(j, sentence) for j, sentence in enumerate(annot_sentences) if
-                     sentence.begin < i and sentence.end > i][0][
-                        0]
-                chunk = {
-                    'text': annot_text[previous_boundary:token.end + 1].strip(),
-                    'tokens': annot_tokens[previous_token:i + 1],
-                    'sentences': annot_sentences[previous_sentence:current_sentence + 1],
-                }
-                sentence_length = annot_sentences[current_sentence].end - annot_sentences[current_sentence].begin
-                j = min(i + 1 - previous_token, sentence_length)
-
-                chunk.update({
-                    'lemma': [annot_lemma[previous_sentence][previous_intersentence_boundary:]] * (
-                            previous_intersentence_boundary > -1) + \
-                             [annot_lemma[i] for i in range(previous_sentence + 1, current_sentence)] + \
-                             [annot_lemma[current_sentence][:j]],
-                    'morph': [annot_morph[previous_sentence][previous_intersentence_boundary:]] * (
-                            previous_intersentence_boundary > -1) + \
-                             [annot_morph[i] for i in range(previous_sentence + 1, current_sentence)] + \
-                             [annot_morph[current_sentence][:j]],
-                    'postag': [annot_postag[previous_sentence][previous_intersentence_boundary:]] * (
-                            previous_intersentence_boundary > -1) + \
-                              [annot_postag[i] for i in range(previous_sentence + 1, current_sentence)] + \
-                              [annot_postag[current_sentence][:j]],
-                    'syntax_dep_tree': [annot_syntax_dep_tree[previous_sentence][previous_intersentence_boundary:]] * (
-                            previous_intersentence_boundary > -1) + \
-                                       [annot_syntax_dep_tree[i] for i in range(previous_sentence + 1, current_sentence)] + \
-                                       [annot_syntax_dep_tree[current_sentence][:j]],
-                })
-                previous_boundary = token.end + 1
-                previous_intersentence_boundary = j
-                previous_token = i + 1
-                previous_sentence = current_sentence
-                chunks.append(chunk)
-
-        j = min(len(annot_tokens[previous_token:]),
-                annot_sentences[current_sentence].end - annot_sentences[current_sentence].begin)
-        chunk = {
-            'text': annot_text[previous_boundary:].strip(),
-            'tokens': annot_tokens[previous_token:],
-            'sentences': annot_sentences[previous_sentence:],
-            'lemma': annot_lemma[previous_sentence][previous_intersentence_boundary:] * (
-                    previous_intersentence_boundary > -1) + \
-                     annot_lemma[previous_sentence + 1:],
-            'morph': annot_morph[previous_sentence][previous_intersentence_boundary:] * (
-                    previous_intersentence_boundary > -1) + \
-                     annot_morph[previous_sentence + 1:],
-            'postag': annot_postag[previous_sentence][previous_intersentence_boundary:] * (
-                    previous_intersentence_boundary > -1) + \
-                      annot_postag[previous_sentence + 1:],
-            'syntax_dep_tree': annot_syntax_dep_tree[previous_sentence][previous_intersentence_boundary:] * (
-                    previous_intersentence_boundary > -1) + \
-                               annot_syntax_dep_tree[previous_sentence + 1:],
-        }
-        chunks.append(chunk)
-
-        def recount_boundaries(chunk):
-            begin = chunk['tokens'][0].begin
-            chunk['tokens'] = [Token(tok.text, tok.begin - begin, tok.end - begin) for tok in chunk['tokens']]
-
-            return chunk
-
+            intersentence_boundary = min(len(sents[i - 1]), boundary - list_sum(sents[:i - 1]))
+            return (sents[:i - 1] + [sents[i - 1][:intersentence_boundary]], 
+                    [sents[i - 1][intersentence_boundary:]] + sents[i:])
+        
         def recount_sentences(chunk):
             sentences = []
             lemma = []
             morph = []
             postag = []
             syntax_dep_tree = []
-
-            cursor = 0
+            tokens_cursor = 0
+            local_cursor = 0
 
             for i, sent in enumerate(chunk['syntax_dep_tree']):
                 if len(sent) > 0:
-                    new_cursor = cursor + len(sent)
-                    sentences.append(Sentence(cursor, new_cursor))
+                    sentences.append(Sentence(tokens_cursor, tokens_cursor + len(sent)))
                     lemma.append(chunk['lemma'][i])
                     morph.append(chunk['morph'][i])
                     postag.append(chunk['postag'][i])
-                    syntax_dep_tree.append(sent)
-                    cursor = new_cursor
+                    syntax_dep_tree.append(chunk['syntax_dep_tree'][i])
+                    tokens_cursor += len(sent)
 
             chunk['sentences'] = sentences
             chunk['lemma'] = lemma
             chunk['morph'] = morph
             chunk['postag'] = postag
             chunk['syntax_dep_tree'] = syntax_dep_tree
-
+            
             return chunk
 
-        result = []
-        for chunk in chunks:
-            chunk = recount_boundaries(chunk)
-            result.append(recount_sentences(chunk))
+        chunks = []
+        prev_right_boundary = -1
 
-        return result
+        for i, token in enumerate(annot_tokens[:-1]):
+
+            if '\n' in annot_text[token.end:annot_tokens[i + 1].begin]:
+                if prev_right_boundary > -1:
+                    chunk = {
+                        'text': annot_text[annot_tokens[prev_right_boundary].end:token.end + 1].strip(),
+                        'tokens': annot_tokens[prev_right_boundary + 1:i + 1]
+                    }
+                else:
+                    chunk = {
+                        'text': annot_text[:token.end + 1].strip(),
+                        'tokens': annot_tokens[:i + 1]
+                    }
+
+                lemma, annot_lemma = split_on_two(annot_lemma, i - prev_right_boundary)
+                morph, annot_morph = split_on_two(annot_morph, i - prev_right_boundary)
+                postag, annot_postag = split_on_two(annot_postag, i - prev_right_boundary)
+                syntax_dep_tree, annot_syntax_dep_tree = split_on_two(annot_syntax_dep_tree, i - prev_right_boundary)
+
+                chunk.update({
+                    'lemma': lemma,
+                    'morph': morph,
+                    'postag': postag,
+                    'syntax_dep_tree': syntax_dep_tree,
+                })
+                chunks.append(recount_sentences(chunk))
+
+                prev_right_boundary = i  # number of last token in the last chunk
+
+        chunk = {
+            'text': annot_text[annot_tokens[prev_right_boundary].end:].strip(),
+            'tokens': annot_tokens[prev_right_boundary + 1:],
+            'lemma' : annot_lemma,
+            'morph': annot_morph,
+            'postag': annot_postag,
+            'syntax_dep_tree': annot_syntax_dep_tree,
+        }
+        
+        chunks.append(recount_sentences(chunk))
+        return chunks

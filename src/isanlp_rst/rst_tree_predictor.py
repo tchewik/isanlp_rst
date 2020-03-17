@@ -110,7 +110,7 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
             return features
-        except IndexError:
+        except:
             with open('errors.log', 'w+') as f:
                 f.write(str(pair.values))
                 f.write(annot_text)
@@ -130,10 +130,13 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
             return features
-        except IndexError:
+        
+        except Exception as e:
             with open('errors.log', 'w+') as f:
-                f.write(str(pair.values))
-                f.write(annot_text)
+                f.write('initialize_features() ::: error occured: ' + str(e) + '\n')
+                f.write(str(pairs.values))
+                f.write('\n' + annot_text)
+                f.write(str(annot_lemma))
             return -1
 
     def predict_pair_proba(self, features):
