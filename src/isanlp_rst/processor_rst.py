@@ -1,11 +1,12 @@
 import os
 
 from allennlp_segmentator import AllenNLPSegmentator
+from allennlp_classifier import AllenNLPClassifier
 from features_processor_default import FeaturesProcessor
 from greedy_rst_parser import GreedyRSTParser
 from isanlp.annotation import Token, Sentence
 # from model_segmentator import ModelSegmentator
-from rst_tree_predictor import CustomTreePredictor
+from rst_tree_predictor import CustomTreePredictor, NNTreePredictor
 from sklearn_classifier import SklearnClassifier
 
 
@@ -17,12 +18,15 @@ class ProcessorRST:
         self.segmentator = AllenNLPSegmentator(self._model_dir_path)
 
         self._features_processor = FeaturesProcessor(self._model_dir_path)
-        self._relation_predictor = SklearnClassifier(
-            model_dir_path=os.path.join(self._model_dir_path, 'structure_predictor'))
+        self._relation_predictor = AllenNLPClassifier(
+            model_dir_path=os.path.join(self._model_dir_path, 'structure_predictor_lstm'))
+#         self._relation_predictor = SklearnClassifier(
+#             model_dir_path=os.path.join(self._model_dir_path, 'structure_predictor'))
         self._label_predictor = SklearnClassifier(
             model_dir_path=os.path.join(self._model_dir_path, 'label_predictor'))
         self._nuclearity_predictor = None
-        self._tree_predictor = CustomTreePredictor(
+#         self._tree_predictor = CustomTreePredictor(
+        self._tree_predictor = NNTreePredictor(
             features_processor=self._features_processor,
             relation_predictor=self._relation_predictor,
             label_predictor=self._label_predictor,

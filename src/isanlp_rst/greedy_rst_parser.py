@@ -11,7 +11,7 @@ class GreedyRSTParser:
         :param float confidence_threshold: minimum relation probability to append the pair into the tree
         """
         self.tree_predictor = tree_predictor
-        self._confidence_threshold = confidence_threshold
+        self.confidence_threshold = confidence_threshold
 
     def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree, genre=None):
@@ -44,20 +44,19 @@ class GreedyRSTParser:
 
         scores = self.tree_predictor.predict_pair_proba(features)
 
-        while len(nodes) > 2 and any([score > self._confidence_threshold for score in scores]):
+        while len(nodes) > 2 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
 
             # make the new node by merging node[j] + node[j+1]
-            _label = self.tree_predictor.predict_label(features.iloc[j])
             temp = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[j],
                 right=nodes[j + 1],
-                relation=_label,
-                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j], _label),
+                relation=self.tree_predictor.predict_label(features.iloc[j]),
+                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j]),
                 proba=scores[j],
-                text=annot_text[nodes[j].start:nodes[j + 1].end + 1].strip()
+                text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
             )
 
             max_id += 1
@@ -96,16 +95,13 @@ class GreedyRSTParser:
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 
-        if len(scores) == 1 and scores[0] > self._confidence_threshold:
-            _label = self.tree_predictor.predict_label(features)[0]
+        if len(scores) == 1 and scores[0] > self.confidence_threshold:
             root = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[0],
                 right=nodes[1],
-                relation=_label,
-                nuclearity=self.tree_predictor.predict_nuclearity(features, _label)[0],
-                proba=scores[0],
-                text=annot_text[nodes[0].start:nodes[1].end + 1].strip()
+                relation='root',
+                proba=scores[0]
             )
             nodes = [root]
 

@@ -110,7 +110,7 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
             return features
-        except:
+        except IndexError:
             with open('errors.log', 'w+') as f:
                 f.write(str(pair.values))
                 f.write(annot_text)
@@ -130,27 +130,27 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
             return features
-        
-        except Exception as e:
+        except IndexError:
             with open('errors.log', 'w+') as f:
-                f.write('initialize_features() ::: error occured: ' + str(e) + '\n')
-                f.write(str(pairs.values))
-                f.write('\n' + annot_text)
-                f.write(str(annot_lemma))
+                f.write(str(pair.values))
+                f.write(annot_text)
             return -1
 
     def predict_pair_proba(self, features):
         _same_sentence_bonus = 0.5
-        
+
         if type(features) == pd.DataFrame:
             probas = self.relation_predictor.predict_proba(features)
-            same_sentence_bonus = list(map(lambda value: float(value) * _same_sentence_bonus, 
+            # results = list(map(lambda proba: proba[1], probas))
+            # return results
+            same_sentence_bonus = list(map(lambda value: float(value) * _same_sentence_bonus,
                                            list(features['same_sentence'] == 1)))
             return [probas[i][1] + same_sentence_bonus[i] for i in range(len(probas))]
 
         if type(features) == pd.Series:
-            return self.relation_predictor.predict_proba(features)[0][1] + (features.loc['same_sentence'] == 1) * _same_sentence_bonus
-            
+            return self.relation_predictor.predict_proba(features)[0][1] + (
+                    features.loc['same_sentence'] == 1) * _same_sentence_bonus
+
         if type(features) == list:
             return self.relation_predictor.predict_proba([features])[0][1]
 
@@ -164,24 +164,55 @@ class CustomTreePredictor(RSTTreePredictor):
         if type(features) == pd.Series:
             return self.label_predictor.predict(features.to_frame().T)[0]
 
-    def predict_nuclearity(self, features, label='_'):
-        result = '_'
-        
-        if label:
-            if label[-1] == 'm':
-                result = 'NN'
-            elif label == 'preparation_r':
-                result = 'SN'
-        
-        if not self.nuclearity_predictor:            
-            if type(features) == pd.DataFrame:
-                return [result]
-            
-            if type(features) == pd.Series:
-                return result
+    def predict_nuclearity(self, features):
+        if not self.nuclearity_predictor:
+            return 'unavail'
 
         if type(features) == pd.DataFrame:
             return self.nuclearity_predictor.predict(features)
 
         if type(features) == pd.Series:
             return self.nuclearity_predictor.predict(features.to_frame().T)[0]
+
+
+class NNTreePredictor(CustomTreePredictor):
+    """
+    Contains trained classifiers and feature processors needed for tree prediction.
+    """
+
+    def initialize_features(self, nodes,
+                            annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                            annot_syntax_dep_tree):
+        features = super().initialize_features(nodes,
+                                               annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph,
+                                               annot_postag,
+                                               annot_syntax_dep_tree)
+        features['snippet_x'] = features['tokens_x'].map(lambda row: ' '.join(row)).values
+        features['snippet_y'] = features['tokens_y'].map(lambda row: ' '.join(row)).values
+
+        return features
+
+    def predict_pair_proba(self, features):
+        _same_sentence_bonus = 0.
+
+        if type(features) == pd.DataFrame:
+            probas = self.relation_predictor.predict_proba_batch(features['snippet_x'].values.tolist(),
+                                                                 features['snippet_y'].values.tolist())
+            # probas = features.apply(lambda row: self.relation_predictor.predict_proba(row.snippet_x, row.snippet_y), axis=1).values
+            same_sentence_bonus = list(map(lambda value: float(value) * _same_sentence_bonus,
+                                           list(features['same_sentence'] == 1)))
+
+            return [probas[i][1] + same_sentence_bonus[i] for i in range(len(probas))]
+
+        if type(features) == pd.Series:
+            return self.relation_predictor.predict_proba(' '.join(features.loc['tokens_x']),
+                                                         ' '.join(features.loc['tokens_y']))[0][1] + (
+                           features.loc['same_sentence'] == 1) * _same_sentence_bonus
+
+        if type(features) == list:
+            snippet_x = [feature['snippet_x'] for feature in features]
+            snippet_y = [feature['snippet_y'] for feature in features]
+            # probas = [self.relation_predictor.predict_proba(row.snippet_x, row.snippet_y) for row in features]
+            probas = self.relation_predictor.predict_proba_batch(snippet_x, snippet_y)
+
+            return [proba[1] for proba in probas]  # self.relation_predictor.predict_proba([features])[0][1]
