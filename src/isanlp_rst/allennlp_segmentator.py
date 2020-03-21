@@ -12,7 +12,8 @@ class AllenNLPSegmentator:
         self.predictor = Predictor.from_path(self._model_path)
         self._separator = 'U-S'
 
-    def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree, start_id=0):
+    def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
+                 start_id=0):
         return self._build_discourse_units(annot_text, annot_tokens,
                                            self._predict(annot_tokens, annot_sentences), start_id)
 
@@ -20,16 +21,21 @@ class AllenNLPSegmentator:
         """
         :return: numbers of tokens predicted as EDU left boundaries
         """
-        result = []
+        _sentences = []
         for sentence in sentences:
             text = ' '.join([self._prepare_token(token.text) for token in tokens[sentence.begin:sentence.end]]).strip()
             if text:
-                prediction = self.predictor.predict(text)['tags']
-                prediction[0] = self._separator
-                result += prediction
+                _sentences.append(text)
 
-        result = np.array(result)
-        return np.argwhere(result == self._separator)[:, 0]
+        predictions = self.predictor.predict_batch_json([{'sentence': sentence} for sentence in _sentences])
+        result = []
+        for i, prediction in enumerate(predictions):
+            pred = prediction['tags'][:sentences[i].end - sentences[i].begin]
+            if len(pred) > 0:
+                pred[0] = self._separator
+            result += pred
+
+        return np.argwhere(np.array(result) == self._separator)[:, 0]
 
     def _build_discourse_units(self, text, tokens, numbers, start_id):
         """
@@ -43,7 +49,7 @@ class AllenNLPSegmentator:
 
         if numbers.shape[0]:
             for i in range(0, len(numbers) - 1):
-                new_edu = DiscourseUnit(start_id+i,
+                new_edu = DiscourseUnit(start_id + i,
                                         start=tokens[numbers[i]].begin,
                                         end=tokens[numbers[i + 1]].begin - 1,
                                         text=text[tokens[numbers[i]].begin:tokens[numbers[i + 1]].begin],
@@ -53,7 +59,7 @@ class AllenNLPSegmentator:
             if numbers.shape[0] == 1:
                 i = -1
 
-            new_edu = DiscourseUnit(start_id+i + 1,
+            new_edu = DiscourseUnit(start_id + i + 1,
                                     start=tokens[numbers[-1]].begin,
                                     end=tokens[-1].end,
                                     text=text[tokens[numbers[-1]].begin:tokens[-1].end],
@@ -63,6 +69,44 @@ class AllenNLPSegmentator:
         return edus
 
     def _prepare_token(self, token):
+        symbol_map = {
+            'x': 'х',
+            'X': 'X',
+            'y': 'у',
+            '—': '-',
+            '“': '«',
+            '‘': '«',
+            '”': '»',
+            '’': '»',
+            '😆': '😄',
+            '😊': '😄',
+            '😑': '😄',
+            '😔': '😄',
+            '😉': '😄',
+            '❗': '😄',
+            '🤔': '😄',
+            '😅': '😄',
+            '⚓': '😄',
+            'ε': 'α',
+            'ζ': 'α',
+            'η': 'α',
+            'μ': 'α',
+            'δ': 'α',
+            'λ': 'α',
+            'ν': 'α',
+            'β': 'α',
+            'γ': 'α',
+            'ν': 'α',
+            'と': '尋',
+            'の': '尋',
+            '神': '尋',
+            '隠': '尋',
+            'し': '尋',
+        }
+
+        for key, value in symbol_map.items():
+            token = token.replace(key, value)
+
         for keyword in ['www', 'http']:
             if keyword in token:
                 return '_html_'
