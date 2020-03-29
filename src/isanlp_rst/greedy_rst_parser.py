@@ -49,12 +49,14 @@ class GreedyRSTParser:
             j = to_merge(scores)  # position of the pair in list
 
             # make the new node by merging node[j] + node[j+1]
+            relation = self.tree_predictor.predict_label(features.iloc[j]),
+            relation, nuclearity = relation[0].split('_')
             temp = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[j],
                 right=nodes[j + 1],
-                relation=self.tree_predictor.predict_label(features.iloc[j]),
-                nuclearity=self.tree_predictor.predict_nuclearity(features.iloc[j]),
+                relation=relation,
+                nuclearity=nuclearity,
                 proba=scores[j],
                 text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
             )
@@ -95,13 +97,17 @@ class GreedyRSTParser:
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 
+        relation = self.tree_predictor.predict_label(features.iloc[0]),
+        relation, nuclearity = relation[0].split('_')
         if len(scores) == 1 and scores[0] > self.confidence_threshold:
             root = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[0],
                 right=nodes[1],
-                relation='root',
-                proba=scores[0]
+                relation=relation,
+                nuclearity=nuclearity,
+                proba=scores[0],
+                text=annot_text[nodes[0].start:nodes[1].end].strip()
             )
             nodes = [root]
 

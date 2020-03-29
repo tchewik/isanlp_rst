@@ -2,7 +2,8 @@ import os
 
 from allennlp_segmentator import AllenNLPSegmentator
 from allennlp_classifier import AllenNLPClassifier
-from features_processor_default import FeaturesProcessor
+#from features_processor_default import FeaturesProcessor
+from features_processor_tokenizer import FeaturesProcessor
 from greedy_rst_parser import GreedyRSTParser
 from isanlp.annotation import Token, Sentence
 # from model_segmentator import ModelSegmentator
@@ -22,8 +23,10 @@ class ProcessorRST:
             model_dir_path=os.path.join(self._model_dir_path, 'structure_predictor_lstm'))
 #         self._relation_predictor = SklearnClassifier(
 #             model_dir_path=os.path.join(self._model_dir_path, 'structure_predictor'))
-        self._label_predictor = SklearnClassifier(
-            model_dir_path=os.path.join(self._model_dir_path, 'label_predictor'))
+        self._label_predictor = AllenNLPClassifier(
+            model_dir_path=os.path.join(self._model_dir_path, 'label_predictor_lstm'))
+#         self._label_predictor = SklearnClassifier(
+#             model_dir_path=os.path.join(self._model_dir_path, 'label_predictor'))
         self._nuclearity_predictor = None
 #         self._tree_predictor = CustomTreePredictor(
         self._tree_predictor = NNTreePredictor(
@@ -33,7 +36,7 @@ class ProcessorRST:
             nuclearity_predictor=self._nuclearity_predictor)
 
         self.paragraph_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.1)
-        self.document_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.2)
+        self.document_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=0.25)
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
@@ -56,8 +59,8 @@ class ProcessorRST:
             edus = self.segmentator(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
                                     chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
 
-            for edu in edus:
-                print('::', edu)
+#             for edu in edus:
+#                 print('::', edu)
                 
             if len(edus) == 1:
                 dus += edus

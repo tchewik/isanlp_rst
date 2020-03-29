@@ -11,8 +11,6 @@ class RSTTreePredictor:
         self.features_processor = features_processor
         self.relation_predictor = relation_predictor
         self.label_predictor = label_predictor
-        if self.label_predictor:
-            self.labels = self.label_predictor.classes_
 
         self.nuclearity_predictor = nuclearity_predictor
         if self.nuclearity_predictor:
@@ -198,21 +196,33 @@ class NNTreePredictor(CustomTreePredictor):
         if type(features) == pd.DataFrame:
             probas = self.relation_predictor.predict_proba_batch(features['snippet_x'].values.tolist(),
                                                                  features['snippet_y'].values.tolist())
-            # probas = features.apply(lambda row: self.relation_predictor.predict_proba(row.snippet_x, row.snippet_y), axis=1).values
+            
             same_sentence_bonus = list(map(lambda value: float(value) * _same_sentence_bonus,
                                            list(features['same_sentence'] == 1)))
 
             return [probas[i][1] + same_sentence_bonus[i] for i in range(len(probas))]
 
         if type(features) == pd.Series:
-            return self.relation_predictor.predict_proba(' '.join(features.loc['tokens_x']),
-                                                         ' '.join(features.loc['tokens_y']))[0][1] + (
+            return self.relation_predictor.predict_proba(features.loc['snippet_x'],
+                                                         features.loc['snippet_y'])[0][1] + (
                            features.loc['same_sentence'] == 1) * _same_sentence_bonus
 
         if type(features) == list:
             snippet_x = [feature['snippet_x'] for feature in features]
             snippet_y = [feature['snippet_y'] for feature in features]
-            # probas = [self.relation_predictor.predict_proba(row.snippet_x, row.snippet_y) for row in features]
+            
             probas = self.relation_predictor.predict_proba_batch(snippet_x, snippet_y)
 
             return [proba[1] for proba in probas]  # self.relation_predictor.predict_proba([features])[0][1]
+
+    def predict_label(self, features):
+        if not self.label_predictor:
+            return 'relation'
+
+        if type(features) == pd.DataFrame:
+            return self.label_predictor.predict_batch(features['snippet_x'].values.tolist(),
+                                                      features['snippet_y'].values.tolist())
+
+        if type(features) == pd.Series:
+            return self.label_predictor.predict(features.loc['snippet_x'],
+                                                features.loc['snippet_y'])

@@ -35,3 +35,13 @@ class AllenNLPClassifier:
 
     def predict(self, snippet_x, snippet_y):
         return self._model.predict(snippet_x, snippet_y)['label']
+
+    def predict_batch(self, snippet_x, snippet_y):
+        predictions = self._model.predict_batch_json([
+            {'premise': snippet_x[i],
+             'hypothesis': snippet_y[i]} if 0 < len(snippet_x[i].split()) <= self._max_len and 0 < len(
+                snippet_y[i].split()) <= self._max_len else
+            {'premise': '1', 'hypothesis': '-'}
+            for i in range(len(snippet_x))])
+        
+        return [prediction['label'] for prediction in predictions]

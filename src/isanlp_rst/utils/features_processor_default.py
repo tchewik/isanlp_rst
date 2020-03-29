@@ -344,7 +344,7 @@ class FeaturesProcessor:
             'lemmas_x', 'lemmas_y',
             'snippet_x_locs', 'snippet_y_locs',
             'morph_x', 'morph_y',
-            'tokens_x', 'tokens_y',
+#             'tokens_x', 'tokens_y',
             'common_root_fpos'
         ])
 

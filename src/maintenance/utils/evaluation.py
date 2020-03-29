@@ -2,17 +2,17 @@ import pandas as pd
 from utils.file_reading import text_html_map
 
 
-def metric_parseval(parsed_pairs, gold, labeled=False):
+def metric_parseval_pd(parsed_pairs, gold, labeled=False):
     parsed_strings = []
-    for row in parsed_pairs:
-        x, y = row[0], row[1]
+    for i in parsed_pairs.index:
+        x, y = parsed_pairs.loc[i, 'snippet_x'], parsed_pairs.loc[i, 'snippet_y']
         
         for key, value in text_html_map.items():
             x = x.replace(key, value).strip()
             y = y.replace(key, value).strip()
-            
-        label = ' ' + row[2] if labeled else ''
-        parsed_strings.append(x + ' ' + y + label)
+
+        label = ' ' + parsed_pairs.loc[i, 'category_id'] if labeled else ''
+        parsed_strings.append(x + ' ' + y + ' ' + label)
         
     parsed_strings = set(parsed_strings)
     
@@ -25,13 +25,50 @@ def metric_parseval(parsed_pairs, gold, labeled=False):
             y = y.replace(key, value).strip()
 
         label = ' ' + gold.loc[i, 'category_id'] if labeled else ''
-        gold_strings.append(x + ' ' + y + label)
+        gold_strings.append(x + ' ' + y + ' ' + label)
         
     gold_strings = set(gold_strings)
     
     true_pos = len(gold_strings & parsed_strings)
     all_parsed = len(parsed_strings)
     all_gold = len(gold_strings)
+    
+    return true_pos, all_parsed, all_gold
+
+
+def metric_parseval(parsed_pairs, gold, labeled=False, counts=False):
+    parsed_strings = []
+    for row in parsed_pairs:
+        x, y = row[0], row[1]
+        
+        for key, value in text_html_map.items():
+            x = x.replace(key, value).strip()
+            y = y.replace(key, value).strip()
+            
+        label = ' ' + row[2] if labeled else ''
+        parsed_strings.append(x + ' ' + y + ' ' + label)
+        
+    parsed_strings = set(parsed_strings)
+    
+    gold_strings = []
+    for i in gold.index:
+        x, y = gold.loc[i, 'snippet_x'], gold.loc[i, 'snippet_y']
+        
+        for key, value in text_html_map.items():
+            x = x.replace(key, value).strip()
+            y = y.replace(key, value).strip()
+
+        label = ' ' + gold.loc[i, 'category_id'] if labeled else ''
+        gold_strings.append(x + ' ' + y + ' ' + label)
+        
+    gold_strings = set(gold_strings)
+    
+    true_pos = len(gold_strings & parsed_strings)
+    all_parsed = len(parsed_strings)
+    all_gold = len(gold_strings)
+    
+    if counts:
+        return true_pos, all_parsed, all_gold
     
     pr = true_pos / all_parsed
     re = true_pos / all_gold
