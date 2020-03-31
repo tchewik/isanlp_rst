@@ -11,6 +11,7 @@ class AllenNLPSegmentator:
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
         self.predictor = Predictor.from_path(self._model_path)
         self._separator = 'U-S'
+        self._threshold = .35
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
                  start_id=0):
@@ -30,12 +31,12 @@ class AllenNLPSegmentator:
         predictions = self.predictor.predict_batch_json([{'sentence': sentence} for sentence in _sentences])
         result = []
         for i, prediction in enumerate(predictions):
-            pred = prediction['tags'][:sentences[i].end - sentences[i].begin]
+            pred = np.array(prediction['class_probabilities'][:sentences[i].end - sentences[i].begin])[:, 1] > self._threshold
             if len(pred) > 0:
-                pred[0] = self._separator
-            result += pred
+                pred[0] = True  #self._separator
+            result += list(pred)
 
-        return np.argwhere(np.array(result) == self._separator)[:, 0]
+        return np.argwhere(np.array(result) == True)[:, 0]
 
     def _build_discourse_units(self, text, tokens, numbers, start_id):
         """
