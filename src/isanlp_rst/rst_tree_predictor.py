@@ -191,7 +191,7 @@ class NNTreePredictor(CustomTreePredictor):
         return features
 
     def predict_pair_proba(self, features):
-        _same_sentence_bonus = 0.
+        _same_sentence_bonus = 0.1
 
         if type(features) == pd.DataFrame:
             probas = self.relation_predictor.predict_proba_batch(features['snippet_x'].values.tolist(),
@@ -216,13 +216,31 @@ class NNTreePredictor(CustomTreePredictor):
             return [proba[1] for proba in probas]  # self.relation_predictor.predict_proba([features])[0][1]
 
     def predict_label(self, features):
+        _class_mapper = {
+            'background_NS': 'elaboration_NS',
+            'background_SN': 'cause_SN',
+            'evaluation_SN': 'elaboration_SN',
+            'evidence_NS': 'elaboration_NS',
+            'comparison_NN': 'contrast_NN',
+            'restatement_NN': 'joint_NN',
+            'sequence_NN': 'joint_NN'
+        }    
+
         if not self.label_predictor:
             return 'relation'
 
         if type(features) == pd.DataFrame:
-            return self.label_predictor.predict_batch(features['snippet_x'].values.tolist(),
+            result = self.label_predictor.predict_batch(features['snippet_x'].values.tolist(),
                                                       features['snippet_y'].values.tolist())
 
         if type(features) == pd.Series:
-            return self.label_predictor.predict(features.loc['snippet_x'],
-                                                features.loc['snippet_y'])
+            result = self.label_predictor.predict(features.loc['snippet_x'],
+                                                 features.loc['snippet_y'])
+            
+        if type(result) == list:
+            return [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
+        
+        if _class_mapper.get(result):
+            return _class_mapper.get(result)
+        
+        return result

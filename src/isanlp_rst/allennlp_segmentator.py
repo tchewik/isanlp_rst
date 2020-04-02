@@ -11,7 +11,7 @@ class AllenNLPSegmentator:
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
         self.predictor = Predictor.from_path(self._model_path)
         self._separator = 'U-S'
-        self._threshold = .35
+        self._threshold = .3
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
                  start_id=0):
@@ -32,8 +32,19 @@ class AllenNLPSegmentator:
         result = []
         for i, prediction in enumerate(predictions):
             pred = np.array(prediction['class_probabilities'][:sentences[i].end - sentences[i].begin])[:, 1] > self._threshold
+            
+            # The first token in a sentence is always a separator
             if len(pred) > 0:
-                pred[0] = True  #self._separator
+                pred[0] = True
+                
+            # No single-token EDUs
+            for j, token in enumerate(pred[:-1]):
+                if token and pred[j+1]:
+                    if j == 0:
+                        pred[j+1] = False
+                    else:
+                        pred[j] = False
+                
             result += list(pred)
 
         return np.argwhere(np.array(result) == True)[:, 0]
@@ -54,7 +65,8 @@ class AllenNLPSegmentator:
                                         start=tokens[numbers[i]].begin,
                                         end=tokens[numbers[i + 1]].begin - 1,
                                         text=text[tokens[numbers[i]].begin:tokens[numbers[i + 1]].begin],
-                                        relation='elementary')
+                                        relation='elementary',
+                                        nuclearity='_')
                 edus.append(new_edu)
 
             if numbers.shape[0] == 1:
@@ -64,7 +76,8 @@ class AllenNLPSegmentator:
                                     start=tokens[numbers[-1]].begin,
                                     end=tokens[-1].end,
                                     text=text[tokens[numbers[-1]].begin:tokens[-1].end],
-                                    relation='elementary')
+                                    relation='elementary',
+                                    nuclearity='_')
             edus.append(new_edu)
 
         return edus
