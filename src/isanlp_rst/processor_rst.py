@@ -21,7 +21,7 @@ _FEATURE_PROCESSOR = {
 }
 
 _SPAN_PREDICTOR = {
-    'lstm': (AllenNLPClassifier, 'structure_predictor_lstm', 0.1, 0.45),
+    'lstm': (AllenNLPClassifier, 'structure_predictor_lstm', 0.1, 0.5),
     'ensemble': (SklearnClassifier, 'structure_predictor', 0.15, 0.2),
 }
 
