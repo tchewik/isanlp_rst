@@ -12,9 +12,18 @@ import warnings
 import nltk
 import numpy as np
 import pandas as pd
+from dostoevsky.models import FastTextSocialNetworkModel
+from dostoevsky.tokenization import RegexTokenizer
+from gensim.models import KeyedVectors
+from gensim.models import Word2Vec
+from nltk.translate import bleu_score, chrf_score
 from scipy import spatial
-from utils.features_processor_variables import FPOS_COMBINATIONS, count_words_x, \
-    count_words_y, relations_related
+from sklearn.decomposition import TruncatedSVD
+from sklearn.metrics.pairwise import paired_cosine_distances
+from sklearn.metrics.pairwise import paired_euclidean_distances
+from utils.count_vectorizer import MyCountVectorizer
+from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
+    count_words_y, pairs_words, relations_related
 from utils.synonyms_vocabulary import synonyms_vocabulary
 
 warnings.filterwarnings('ignore')
@@ -38,6 +47,7 @@ class FeaturesProcessor:
         self.stop_words = nltk.corpus.stopwords.words('russian')
         self.count_words_x = count_words_x
         self.count_words_y = count_words_y
+        self.pairs_words = pairs_words
 
         self.vectorizer = pickle.load(open(os.path.join(model_dir_path, 'tf_idf', 'pipeline.pkl'), 'rb'))
 
@@ -91,6 +101,7 @@ class FeaturesProcessor:
         try:
             df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)),  # + 1,
                                          axis=1)  # -1
+            df['token_end_y'] = df['token_end_y'] + (df['token_end_y'] == df['token_begin_y']) * 1
         except:
             print(f'Unable to locate second snippet >>> {(df.snippet_x.values, df.snippet_y.values)}', file=sys.stderr)
             return -1
@@ -118,9 +129,42 @@ class FeaturesProcessor:
         broken_pair = df[df.snippet_y_locs.map(len) < 1]
         if not broken_pair.empty:
             print(
-                f"Unable to locate second snippet >>> {df[df.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
+                f"Unable to locate second snippet >>> {df[df.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
+                file=sys.stderr)
+            df2 = df[df.snippet_y_locs.map(len) < 1]
+            _df2 = pd.DataFrame({
+                'snippet_x': df2['snippet_y'].values,
+                'snippet_y': df2['snippet_x'].values,
+                'loc_y': df2['loc_x'].values,
+                'token_begin_y': df2['token_begin_x'].values,
+            })
+            
+            df2 = _df2[:]
+            df2['loc_x'] = df2.apply(lambda row: self.annot_text.find(row.snippet_x, row.loc_y - 3), axis=1)
+            df2['token_begin_x'] = df2.loc_x.map(self.locate_token)
+            #df2['loc_y'] = df2.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
+            df2['token_end_y'] = df2.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)),  # + 1,
+                                         axis=1)  # -1
+            #df2['token_begin_x'] = df2['token_begin_y']
+            #df2['token_begin_y'] = df2.loc_y.map(self.locate_token)
+            df2['len_w_x'] = df2['token_begin_y'] - df2['token_begin_x']
+            df2['len_w_y'] = df2['token_end_y'] - df2['token_begin_y']  # +1
+            df2['snippet_x_locs'] = df2.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
+                                                                        range(row.token_begin_x, row.token_begin_y)] if
+                                                      pair]], axis=1)
+            df2['snippet_x_locs'] = df2.snippet_x_locs.map(lambda row: row[0])
+            df2['snippet_y_locs'] = df2.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
+                                                                            range(row.token_begin_y, row.token_end_y)] if
+                                                          pair]], axis=1)
+            df2['snippet_y_locs'] = df2.snippet_y_locs.map(lambda row: row[0])
+            broken_pair = df2[df2.snippet_y_locs.map(len) < 1]
+            if not broken_pair.empty:
+                print(
+                f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
             df = df[df.snippet_y_locs.map(len) > 0]
+            df2 = df2[df2.snippet_x_locs.map(len) > 0]
+            df = pd.concat([df, df2])
 
         # print(df[['snippet_x', 'snippet_y', 'snippet_y_locs', 'loc_x', 'loc_y']].values)
         df.drop(columns=['loc_x', 'loc_y'], inplace=True)
@@ -145,6 +189,16 @@ class FeaturesProcessor:
             print(time.time() - t)
             t = time.time()
             print('3\t', end="", flush=True)
+
+        # find certain markers for various relations
+        for relation in self.relations_related:
+            df[relation + '_count' + '_x'] = df.snippet_x.map(lambda row: self._relation_score(relation, row))
+            df[relation + '_count' + '_y'] = df.snippet_y.map(lambda row: self._relation_score(relation, row))
+
+        if self.verbose:
+            print(time.time() - t)
+            t = time.time()
+            print('4\t', end="", flush=True)
 
         # get tokens
         df['tokens_x'] = df.apply(lambda row: self.get_tokens(row.token_begin_x, row.token_begin_y), axis=1)
@@ -285,6 +339,40 @@ class FeaturesProcessor:
             return (index + 1.) / len(row) * 100.
         return -1.
 
+    def _svd_tfidf_matrix(self, matrix):
+        svd = TruncatedSVD(n_components=300)
+        return svd.fit_transform(matrix)
+
+    def _linguistic_features(self, row, tags):
+        """ Count occurences of each feature from MORPH_FEATS and/or SYNTAX_LINKS """
+        tags = MORPH_FEATS
+
+        def get_tags_for_snippet(morph_annot, mark='_x'):
+            result = dict.fromkeys(['%s%s' % (tag, mark) for tag in tags], 0)
+
+            for record in morph_annot:
+                for key, value in record.items():
+                    try:
+                        result['%s_%s%s' % (key, value, mark)] += 1
+                    except KeyError as e:
+                        # print(f"::: Did not find such key in MORPH_FEATS: {e} :::", file=sys.stderr)
+                        pass
+
+            return result
+
+        tags_for_snippet_x = get_tags_for_snippet(row.morph_x, '_x')
+        tags_for_snippet_y = get_tags_for_snippet(row.morph_y, '_y')
+
+        tags = dict(tags_for_snippet_x, **tags_for_snippet_y)
+
+        return row.append(pd.Series(list(tags.values()), index=list(tags.keys())))
+
+    def _count_stop_words(self, lemmatized_text, threshold=0):
+        return len([1 for token in lemmatized_text if len(token) >= threshold and token in self.stop_words])
+
+    def _relation_score(self, relation, row):
+        return sum([1 for value in self.relations_related[relation] if value in row])
+
     def _postag(self, location):
         return self.annot_postag[location[0]][location[1]]
 
@@ -309,6 +397,75 @@ class FeaturesProcessor:
             postag = self.annot_postag[sent][word]
             result.append(postag)
         return result
+
+    def _first_and_last_pair(self, row):
+        def get_features_for_snippet(first_pair_text, first_pair_morph, last_pair_text, last_pair_morph, mark='_x'):
+            result = {}
+
+            for pos_combination in self.fpos_combinations:
+                result['first_' + pos_combination + mark] = int(pos_combination == first_pair_morph)
+                result['last_' + pos_combination + mark] = int(pos_combination == last_pair_morph)
+
+            for key in self.pairs_words:
+                if mark == key[-2:]:
+                    if key[:-2] == 'first_pair':
+                        for word in self.pairs_words[key]:
+                            result[key[:-1] + word + mark] = int(bool(re.findall(word, first_pair_text, re.IGNORECASE)))
+                    else:
+                        for word in self.pairs_words[key]:
+                            result[key[:-1] + word + mark] = int(bool(re.findall(word, last_pair_text, re.IGNORECASE)))
+
+            return result
+
+        # snippet X
+        first_pair_text_x = ' '.join([token for token in row.tokens_x[:2]]).lower()
+        first_pair_morph_x = '_'.join(self._first_postags(row.snippet_x_locs))
+
+        if len(row.tokens_x) > 2:
+            last_pair_text_x = ' '.join([token for token in row.tokens_x[-2:]]).lower()
+            last_pair_morph_x = '_'.join(self._last_postags(row.snippet_x_locs))
+        else:
+            last_pair_text_x = ' '
+            last_pair_morph_x = 'X'
+
+        features_of_snippet_x = get_features_for_snippet(first_pair_text_x, first_pair_morph_x,
+                                                         last_pair_text_x, last_pair_morph_x,
+                                                         '_x')
+
+        # snippet Y
+        first_pair_text_y = ' '.join([token for token in row.tokens_y[:2]]).lower()
+        first_pair_morph_y = '_'.join(self._first_postags(row.snippet_y_locs))
+
+        if len(row.tokens_y) > 2:
+            last_pair_text_y = ' '.join([token for token in row.tokens_y[-2:]]).lower()
+            last_pair_morph_y = '_'.join(self._last_postags(row.snippet_y_locs))
+
+        else:
+            last_pair_text_y = ' '
+            last_pair_morph_y = 'X'
+
+        features_of_snippet_y = get_features_for_snippet(first_pair_text_y, first_pair_morph_y,
+                                                         last_pair_text_y, last_pair_morph_y,
+                                                         '_y')
+
+        tags = dict(features_of_snippet_x, **features_of_snippet_y)
+
+        return row.append(pd.Series(list(tags.values()), index=list(tags.keys())))
+
+    def get_jaccard_sim(self, text1, text2):
+        txt1 = set(text1)
+        txt2 = set(text2)
+        c = len(txt1.intersection(txt2))
+        return float(c) / (len(txt1) + len(txt2) - c + 1e-05)
+
+    def get_bleu_score(self, text1, text2):
+        return bleu_score.sentence_bleu([text1], text2, weights=(0.5,))
+
+    def get_chrf_score(self, text1, text2):
+        try:
+            return chrf_score.corpus_chrf([text1], [text2], min_len=2)
+        except ZeroDivisionError:
+            return 0.
 
     def _tag_postags_morph(self, locations):
         result = []
