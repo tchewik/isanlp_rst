@@ -1,14 +1,14 @@
 import os
 
-from allennlp_segmentator import AllenNLPSegmentator
 from allennlp_classifier import AllenNLPClassifier
-from sklearn_classifier import SklearnClassifier
+from allennlp_segmentator import AllenNLPSegmentator
 from features_processor_default import FeaturesProcessor as FP_feature_rich
 from features_processor_tokenizer import FeaturesProcessor as FP_tokenizer
 from greedy_rst_parser import GreedyRSTParser
-from isanlp.annotation import Token, Sentence
+from isanlp.annotation import Sentence
 from model_segmentator import ModelSegmentator
 from rst_tree_predictor import CustomTreePredictor, NNTreePredictor
+from sklearn_classifier import SklearnClassifier
 
 _SEGMENTATOR = {
     'lstm': AllenNLPSegmentator,
@@ -35,21 +35,23 @@ _TREE_PREDICTOR = {
     'ensemble': CustomTreePredictor
 }
 
+
 class ProcessorRST:
-    def __init__(self, model_dir_path, segmentator_type='lstm', span_predictor_type='lstm', label_predictor_type='lstm'):
+    def __init__(self, model_dir_path, segmentator_type='lstm', span_predictor_type='lstm',
+                 label_predictor_type='lstm'):
         self._model_dir_path = model_dir_path
-        
+
         self.segmentator = _SEGMENTATOR[segmentator_type](self._model_dir_path)
 
         fp_type = sorted([span_predictor_type, label_predictor_type])[0]
         self._features_processor = _FEATURE_PROCESSOR[fp_type](self._model_dir_path)
-        
+
         self._relation_predictor = _SPAN_PREDICTOR[span_predictor_type][0](
             model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[span_predictor_type][1]))
-        
+
         self._label_predictor = _LABEL_PREDICTOR[label_predictor_type][0](
             model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[label_predictor_type][1]))
-        
+
         self._nuclearity_predictor = None
         self._tree_predictor = _TREE_PREDICTOR[span_predictor_type](
             features_processor=self._features_processor,
@@ -57,8 +59,10 @@ class ProcessorRST:
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
 
-        self.paragraph_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2])
-        self.document_parser = GreedyRSTParser(self._tree_predictor, confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3])
+        self.paragraph_parser = GreedyRSTParser(self._tree_predictor,
+                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2])
+        self.document_parser = GreedyRSTParser(self._tree_predictor,
+                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3])
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
@@ -66,28 +70,21 @@ class ProcessorRST:
         # 1. Split text and annotations on paragraphs and process separately
         dus = []
         start_id = 0
-        
-        if '\n' in annot_text:            
+
+        if '\n' in annot_text:
             chunks = self.split_by_paragraphs(
-                    annot_text,
-                    annot_tokens,
-                    annot_sentences,
-                    annot_lemma,
-                    annot_morph,
-                    annot_postag,
-                    annot_syntax_dep_tree)
+                annot_text,
+                annot_tokens,
+                annot_sentences,
+                annot_lemma,
+                annot_morph,
+                annot_postag,
+                annot_syntax_dep_tree)
 
             for chunk in chunks:
-                
-                print('::: NEW CHUNK :::
-                chunk_text = annot_text[chunk['tokens'][0].begin: chunk['tokens'][-1].end]
-                print(chunk_text)
 
                 edus = self.segmentator(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
                                         chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
-                
-#                 for edu in edus:
-#                     print('>>', edu)
 
                 if len(edus) == 1:
                     dus += edus
@@ -103,30 +100,30 @@ class ProcessorRST:
 
             # 2. Process paragraphs into the document-level annotation
             trees = self.document_parser(dus,
-                                annot_text,
-                                annot_tokens,
-                                annot_sentences,
-                                annot_lemma,
-                                annot_morph,
-                                annot_postag,
-                                annot_syntax_dep_tree)
+                                         annot_text,
+                                         annot_tokens,
+                                         annot_sentences,
+                                         annot_lemma,
+                                         annot_morph,
+                                         annot_postag,
+                                         annot_syntax_dep_tree)
 
             return trees
-        
+
         else:
             edus = self.segmentator(annot_text, annot_tokens, annot_sentences, annot_lemma,
                                     annot_postag, annot_syntax_dep_tree, start_id=start_id)
-            
+
             if len(edus) == 1:
                 return edus
-            
+
             trees = self.paragraph_parser(edus, annot_text, annot_tokens, annot_sentences, annot_lemma,
                                           annot_morph, annot_postag, annot_syntax_dep_tree)
 
             return trees
 
     def split_by_paragraphs(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
-                 annot_syntax_dep_tree):
+                            annot_syntax_dep_tree):
 
         def split_on_two(sents, boundary):
             list_sum = lambda l: sum([len(sublist) for sublist in l])
@@ -136,9 +133,9 @@ class ProcessorRST:
                 i += 1
 
             intersentence_boundary = min(len(sents[i - 1]), boundary - list_sum(sents[:i - 1]))
-            return (sents[:i - 1] + [sents[i - 1][:intersentence_boundary]], 
+            return (sents[:i - 1] + [sents[i - 1][:intersentence_boundary]],
                     [sents[i - 1][intersentence_boundary:]] + sents[i:])
-        
+
         def recount_sentences(chunk):
             sentences = []
             lemma = []
@@ -162,7 +159,7 @@ class ProcessorRST:
             chunk['morph'] = morph
             chunk['postag'] = postag
             chunk['syntax_dep_tree'] = syntax_dep_tree
-            
+
             return chunk
 
         chunks = []
@@ -200,11 +197,11 @@ class ProcessorRST:
         chunk = {
             'text': annot_text[annot_tokens[prev_right_boundary].end:].strip(),
             'tokens': annot_tokens[prev_right_boundary + 1:],
-            'lemma' : annot_lemma,
+            'lemma': annot_lemma,
             'morph': annot_morph,
             'postag': annot_postag,
             'syntax_dep_tree': annot_syntax_dep_tree,
         }
-        
+
         chunks.append(recount_sentences(chunk))
         return chunks
