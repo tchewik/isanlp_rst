@@ -231,11 +231,11 @@ class NNTreePredictor(CustomTreePredictor):
 
         if type(features) == pd.DataFrame:
             result = self.label_predictor.predict_batch(features['snippet_x'].values.tolist(),
-                                                      features['snippet_y'].values.tolist())
+                                                        features['snippet_y'].values.tolist())
 
         if type(features) == pd.Series:
             result = self.label_predictor.predict(features.loc['snippet_x'],
-                                                 features.loc['snippet_y'])
+                                                  features.loc['snippet_y'])
             
         if type(result) == list:
             return [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]

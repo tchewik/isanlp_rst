@@ -60,6 +60,9 @@ class GreedyRSTParser:
                 proba=scores[j],
                 text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
             )
+            
+            print('NEW UNIT')
+            print(temp)
 
             max_id += 1
 
@@ -68,31 +71,37 @@ class GreedyRSTParser:
 
             # modify the scores list
             if j == 0:
+                print('LEFT: [nodes[j], nodes[j + 1]]:', [nodes[j].text, nodes[j + 1].text])
                 _features = self.tree_predictor.extract_features(nodes[j], nodes[j + 1],
                                                                  annot_text, annot_tokens,
                                                                  annot_sentences,
                                                                  annot_lemma, annot_morph, annot_postag,
                                                                  annot_syntax_dep_tree)
+                print('LEFT: _features:', _features)
                 _scores = self.tree_predictor.predict_pair_proba(_features)
                 scores = _scores + scores[j + 2:]
                 features = pd.concat([_features, features.iloc[j + 2:]])
 
             elif j + 1 < len(nodes):
+                print('MIDDLE: [nodes[j - 1], nodes[j], nodes[j + 1]]:', [nodes[j - 1], nodes[j], nodes[j + 1]])
                 _features = self.tree_predictor.initialize_features([nodes[j - 1], nodes[j], nodes[j + 1]],
                                                                     annot_text, annot_tokens,
                                                                     annot_sentences,
                                                                     annot_lemma, annot_morph, annot_postag,
                                                                     annot_syntax_dep_tree)
+                print('MIDDLE: _features:', _features)
                 _scores = self.tree_predictor.predict_pair_proba(_features)
                 features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
                 scores = scores[:j - 1] + _scores + scores[j + 2:]
 
             else:
+                print('LEFT: [nodes[j - 1], nodes[j]]:', [nodes[j - 1], nodes[j]])
                 _features = self.tree_predictor.extract_features(nodes[j - 1], nodes[j],
                                                                  annot_text, annot_tokens,
                                                                  annot_sentences,
                                                                  annot_lemma, annot_morph, annot_postag,
                                                                  annot_syntax_dep_tree)
+                print('RIGHT: _features:', _features)
                 _scores = self.tree_predictor.predict_pair_proba(_features)
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])

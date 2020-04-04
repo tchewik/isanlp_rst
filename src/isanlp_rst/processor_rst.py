@@ -67,8 +67,7 @@ class ProcessorRST:
         dus = []
         start_id = 0
         
-        if '\n' in annot_text:
-            
+        if '\n' in annot_text:            
             chunks = self.split_by_paragraphs(
                     annot_text,
                     annot_tokens,
@@ -79,9 +78,16 @@ class ProcessorRST:
                     annot_syntax_dep_tree)
 
             for chunk in chunks:
+                
+                print('::: NEW CHUNK :::
+                chunk_text = annot_text[chunk['tokens'][0].begin: chunk['tokens'][-1].end]
+                print(chunk_text)
 
                 edus = self.segmentator(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
                                         chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
+                
+#                 for edu in edus:
+#                     print('>>', edu)
 
                 if len(edus) == 1:
                     dus += edus
