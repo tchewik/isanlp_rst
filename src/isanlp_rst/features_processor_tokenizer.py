@@ -12,16 +12,9 @@ import warnings
 import nltk
 import numpy as np
 import pandas as pd
-from dostoevsky.models import FastTextSocialNetworkModel
-from dostoevsky.tokenization import RegexTokenizer
-from gensim.models import KeyedVectors
-from gensim.models import Word2Vec
 from nltk.translate import bleu_score, chrf_score
 from scipy import spatial
 from sklearn.decomposition import TruncatedSVD
-from sklearn.metrics.pairwise import paired_cosine_distances
-from sklearn.metrics.pairwise import paired_euclidean_distances
-from utils.count_vectorizer import MyCountVectorizer
 from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
     count_words_y, pairs_words, relations_related
 from utils.synonyms_vocabulary import synonyms_vocabulary
@@ -138,30 +131,32 @@ class FeaturesProcessor:
                 'loc_y': df2['loc_x'].values,
                 'token_begin_y': df2['token_begin_x'].values,
             })
-            
+
             df2 = _df2[:]
             df2['loc_x'] = df2.apply(lambda row: self.annot_text.find(row.snippet_x, row.loc_y - 3), axis=1)
             df2['token_begin_x'] = df2.loc_x.map(self.locate_token)
-            #df2['loc_y'] = df2.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
+            # df2['loc_y'] = df2.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
             df2['token_end_y'] = df2.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)),  # + 1,
-                                         axis=1)  # -1
-            #df2['token_begin_x'] = df2['token_begin_y']
-            #df2['token_begin_y'] = df2.loc_y.map(self.locate_token)
+                                           axis=1)  # -1
+            # df2['token_begin_x'] = df2['token_begin_y']
+            # df2['token_begin_y'] = df2.loc_y.map(self.locate_token)
             df2['len_w_x'] = df2['token_begin_y'] - df2['token_begin_x']
             df2['len_w_y'] = df2['token_end_y'] - df2['token_begin_y']  # +1
-            df2['snippet_x_locs'] = df2.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                                        range(row.token_begin_x, row.token_begin_y)] if
-                                                      pair]], axis=1)
+            df2['snippet_x_locs'] = df2.apply(
+                lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
+                                                range(row.token_begin_x, row.token_begin_y)] if
+                              pair]], axis=1)
             df2['snippet_x_locs'] = df2.snippet_x_locs.map(lambda row: row[0])
-            df2['snippet_y_locs'] = df2.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                                            range(row.token_begin_y, row.token_end_y)] if
-                                                          pair]], axis=1)
+            df2['snippet_y_locs'] = df2.apply(
+                lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
+                                                range(row.token_begin_y, row.token_end_y)] if
+                              pair]], axis=1)
             df2['snippet_y_locs'] = df2.snippet_y_locs.map(lambda row: row[0])
             broken_pair = df2[df2.snippet_y_locs.map(len) < 1]
             if not broken_pair.empty:
                 print(
-                f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
-                file=sys.stderr)
+                    f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
+                    file=sys.stderr)
             df = df[df.snippet_y_locs.map(len) > 0]
             df2 = df2[df2.snippet_x_locs.map(len) > 0]
             df = pd.concat([df, df2])

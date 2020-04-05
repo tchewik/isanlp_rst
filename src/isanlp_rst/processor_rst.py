@@ -1,18 +1,18 @@
 import os
 
 from allennlp_classifier import AllenNLPClassifier
-from allennlp_segmentator import AllenNLPSegmentator
+from allennlp_segmenter import AllenNLPSegmenter
 from features_processor_default import FeaturesProcessor as FP_feature_rich
 from features_processor_tokenizer import FeaturesProcessor as FP_tokenizer
 from greedy_rst_parser import GreedyRSTParser
 from isanlp.annotation import Sentence
-from model_segmentator import ModelSegmentator
+from model_segmenter import ModelSegmenter
 from rst_tree_predictor import CustomTreePredictor, NNTreePredictor
 from sklearn_classifier import SklearnClassifier
 
-_SEGMENTATOR = {
-    'lstm': AllenNLPSegmentator,
-    'feedforward': ModelSegmentator,
+_SEGMENTER = {
+    'lstm': AllenNLPSegmenter,
+    'feedforward': ModelSegmenter,
 }
 
 _FEATURE_PROCESSOR = {
@@ -37,11 +37,11 @@ _TREE_PREDICTOR = {
 
 
 class ProcessorRST:
-    def __init__(self, model_dir_path, segmentator_type='lstm', span_predictor_type='lstm',
+    def __init__(self, model_dir_path, segmenter_type='lstm', span_predictor_type='lstm',
                  label_predictor_type='lstm'):
         self._model_dir_path = model_dir_path
 
-        self.segmentator = _SEGMENTATOR[segmentator_type](self._model_dir_path)
+        self.segmenter = _SEGMENTER[segmenter_type](self._model_dir_path)
 
         fp_type = sorted([span_predictor_type, label_predictor_type])[0]
         self._features_processor = _FEATURE_PROCESSOR[fp_type](self._model_dir_path)
@@ -83,8 +83,8 @@ class ProcessorRST:
 
             for chunk in chunks:
 
-                edus = self.segmentator(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
-                                        chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
+                edus = self.segmenter(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
+                                      chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
 
                 if len(edus) == 1:
                     dus += edus
@@ -111,8 +111,8 @@ class ProcessorRST:
             return trees
 
         else:
-            edus = self.segmentator(annot_text, annot_tokens, annot_sentences, annot_lemma,
-                                    annot_postag, annot_syntax_dep_tree, start_id=start_id)
+            edus = self.segmenter(annot_text, annot_tokens, annot_sentences, annot_lemma,
+                                  annot_postag, annot_syntax_dep_tree, start_id=start_id)
 
             if len(edus) == 1:
                 return edus
@@ -143,7 +143,6 @@ class ProcessorRST:
             postag = []
             syntax_dep_tree = []
             tokens_cursor = 0
-            local_cursor = 0
 
             for i, sent in enumerate(chunk['syntax_dep_tree']):
                 if len(sent) > 0:
