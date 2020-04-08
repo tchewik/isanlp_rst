@@ -218,9 +218,9 @@ class NNTreePredictor(CustomTreePredictor):
         _class_mapper = {
             'background_NS': 'elaboration_NS',
             'background_SN': 'preparation_SN',
-            'evaluation_NS': 'elaboration_NS',
-            'evidence_NS': 'elaboration_NS',
             'comparison_NN': 'contrast_NN',
+            'interpretation-evaluation_SN': 'elaboration_NS',
+            'evidence_NS': 'elaboration_NS',
             'restatement_NN': 'joint_NN',
             'sequence_NN': 'joint_NN'
         }
