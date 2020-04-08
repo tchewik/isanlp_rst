@@ -1,6 +1,6 @@
 ![Python 3.6](https://img.shields.io/badge/python-3.7-green.svg)
 
-# IsaNLP SRL FrameBank 
+# IsaNLP RST Parser
 This Python 3 library provides RST parser for Russian based on neural network models trained on [RuRSTreebank](https://rstreebank.ru/) Russian discourse corpus. The parser should be used in conjunction with [IsaNLP library](https://github.com/IINemo/isanlp) and can be considered its module.  
 
 ## Installation
