@@ -200,10 +200,6 @@ def extr_pairs(tree, text):
 print(extr_pairs(res['rst'][0], res['text']))
 ```  
 
-Example:  
-```python
-print(extr_pairs(res['rst'][0], res['text']))
-``` 
 The result for `'Президент Филиппин заявил, что поедет на дачу, если будут беспорядки.'`:
 ```
 [['Президент Филиппин заявил,', 'что поедет на дачу, если будут беспорядки.', 'attribution', 'SN'], 
