@@ -46,7 +46,11 @@ class ProcessorRST:
         fp_type = sorted([span_predictor_type, label_predictor_type])[0]
         self._features_processor = _FEATURE_PROCESSOR[fp_type](self._model_dir_path)
 
-        self._relation_predictor = _SPAN_PREDICTOR[span_predictor_type][0](
+        self._relation_predictor_sentence = None
+#         self._relation_predictor_sentence = _SPAN_PREDICTOR[span_predictor_type][0](
+#             model_dir_path=os.path.join(self._model_dir_path, 'sent_' + _SPAN_PREDICTOR[span_predictor_type][1]))
+        
+        self._relation_predictor_text = _SPAN_PREDICTOR[span_predictor_type][0](
             model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[span_predictor_type][1]))
 
         self._label_predictor = _LABEL_PREDICTOR[label_predictor_type][0](
@@ -55,7 +59,8 @@ class ProcessorRST:
         self._nuclearity_predictor = None
         self._tree_predictor = _TREE_PREDICTOR[span_predictor_type](
             features_processor=self._features_processor,
-            relation_predictor=self._relation_predictor,
+            relation_predictor_sentence=self._relation_predictor_sentence,
+            relation_predictor_text=self._relation_predictor_text,
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
 
