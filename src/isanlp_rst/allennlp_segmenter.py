@@ -11,7 +11,7 @@ class AllenNLPSegmenter:
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
         self.predictor = Predictor.from_path(self._model_path)
         self._separator = 'U-S'
-        self._threshold = -0.5
+        self._threshold = -0.9
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
                  start_id=0):

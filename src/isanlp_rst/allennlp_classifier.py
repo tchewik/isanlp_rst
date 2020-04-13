@@ -12,7 +12,7 @@ class AllenNLPClassifier:
 
     def __init__(self, model_dir_path):
         self.model_dir_path = model_dir_path
-        self._max_len = 110
+        self._max_len = 100
 
         self._symbol_map = {
             'x': 'х',
