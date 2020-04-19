@@ -1,13 +1,14 @@
 import os
 
 from allennlp_classifier import AllenNLPClassifier
+from allennlp_classifier_custom_bimpm import AllenNLPClassifier as LargeAllenNLPClassifier
 from allennlp_segmenter import AllenNLPSegmenter
 from features_processor_default import FeaturesProcessor as FP_feature_rich
 from features_processor_tokenizer import FeaturesProcessor as FP_tokenizer
 from greedy_rst_parser import GreedyRSTParser
 from isanlp.annotation import Sentence
 from model_segmenter import ModelSegmenter
-from rst_tree_predictor import CustomTreePredictor, NNTreePredictor
+from rst_tree_predictor import CustomTreePredictor, NNTreePredictor, LargeNNTreePredictor
 from sklearn_classifier import SklearnClassifier
 
 _SEGMENTER = {
@@ -21,7 +22,7 @@ _FEATURE_PROCESSOR = {
 }
 
 _SPAN_PREDICTOR = {
-    'lstm': (AllenNLPClassifier, 'structure_predictor_lstm', 0.1, 0.5),
+    'lstm': (LargeAllenNLPClassifier, 'structure_predictor_lstm', 0.1, 0.5),
     'ensemble': (SklearnClassifier, 'structure_predictor', 0.15, 0.2),
 }
 
@@ -31,7 +32,7 @@ _LABEL_PREDICTOR = {
 }
 
 _TREE_PREDICTOR = {
-    'lstm': NNTreePredictor,
+    'lstm': LargeNNTreePredictor,
     'ensemble': CustomTreePredictor
 }
 
@@ -63,11 +64,15 @@ class ProcessorRST:
             relation_predictor_text=self._relation_predictor_text,
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
+        
+        self._average_tree_length = 400
 
         self.paragraph_parser = GreedyRSTParser(self._tree_predictor,
                                                 confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2])
         self.document_parser = GreedyRSTParser(self._tree_predictor,
                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3])
+        self.additional_document_parser = GreedyRSTParser(self._tree_predictor,
+                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15)
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
@@ -75,6 +80,48 @@ class ProcessorRST:
         # 1. Split text and annotations on paragraphs and process separately
         dus = []
         start_id = 0
+        
+        for missegmentation in ("\nIMG", 
+                        "\nгимнастический коврик;",
+                        "\nгантели или бутылки с песком;",
+                        "\nнебольшой резиновый мяч;",
+                        "\nэластичная лента (эспандер);",
+                        "\nхула-хуп (обруч).",
+                        "\n200?",
+                        "\n300?",
+                        "\nНе требуйте странного.",
+                        "\nИспользуйте мою модель.",
+                        '\n"А чего вы от них требуете?"',
+                        '\n"Решить проблемы с тестерами".',
+                        "\nКак гончая на дичь.", 
+                        "\nИ крупная.",
+                        "\nВ прошлом году компания удивила рынок",
+                        "\nЧужой этики особенно.",
+                        "\nНо и своей тоже.",
+                        "\nАэропорт имени,",
+                        "\nА вот и монголы.",
+                        "\nЗолотой Будда.", 
+                        "\nДворец Богдо-Хана.",
+                        "\nПлощадь Сухэ-Батора.",
+                        "\nОдноклассники)",
+                        "\nВечерняя площадь.",
+                        "\nТугрики.",
+                        "\nВнутренние монголы.",
+                        "\nВид сверху.",
+                        "\nНациональный парк Тэрэлж. IMG IMG",
+                        '\nГора "Черепаха".',
+                        "\nПуть к медитации.",
+                        "\nЖить надо высоко,",
+                        "\nЧан с кумысом.",
+                        "\nЖилая юрта.",
+                        "\nКумыс.",
+                        "\nТрадиционное занятие монголов",
+                        "\nДвугорбый верблюд мало где",
+                        "\nМонгол Шуудан переводится",
+                        "\nОвощные буузы.",
+                        "\nЗнаменитый чай!"
+                        ):
+            annot_text = annot_text.replace(missegmentation, ' '+missegmentation[1:])
 
         if '\n' in annot_text:
             chunks = self.split_by_paragraphs(
@@ -112,6 +159,19 @@ class ProcessorRST:
                                          annot_morph,
                                          annot_postag,
                                          annot_syntax_dep_tree)
+            
+            # 3. lower the document-level threshold if there were predicted inadequately many trees
+            if len(trees) > len(annot_text) // self._average_tree_length:
+                trees = self.additional_document_parser(
+                    trees, 
+                    annot_text,
+                    annot_tokens,
+                    annot_sentences,
+                    annot_lemma,
+                    annot_morph,
+                    annot_postag,
+                    annot_syntax_dep_tree
+                )
 
             return trees
 

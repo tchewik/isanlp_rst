@@ -3,6 +3,7 @@ import os
 import numpy as np
 from allennlp.predictors import Predictor
 from isanlp.annotation_rst import DiscourseUnit
+import torch
 
 
 class AllenNLPSegmenter:
@@ -11,7 +12,7 @@ class AllenNLPSegmenter:
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
         self.predictor = Predictor.from_path(self._model_path)
         self._separator = 'U-S'
-        self._threshold = -0.9
+        self._threshold = 0.35
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
                  start_id=0):
@@ -31,7 +32,9 @@ class AllenNLPSegmenter:
         predictions = self.predictor.predict_batch_json([{'sentence': sentence} for sentence in _sentences])
         result = []
         for i, prediction in enumerate(predictions):
-            pred = np.array(prediction['logits'][:sentences[i].end - sentences[i].begin])[:,
+            logits = torch.tensor(prediction['logits'])
+            prediction['proba'] = torch.nn.functional.softmax(logits, dim=1).tolist()
+            pred = np.array(prediction['proba'][:sentences[i].end - sentences[i].begin])[:,
                    1] > self._threshold
 
             # The first token in a sentence is always a separator

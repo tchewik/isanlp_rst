@@ -1,17 +1,22 @@
 import os
 
-from allennlp.predictors import Predictor
+from models.customization_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
+from models.customization_package.dataset_readers.custom_reader import CustomDataReader
 
 
 class AllenNLPClassifier:
     """
-    Wrapper for allennlp classification model along with preprocessors, saved in the same directory:
+    Wrapper for custom BiMPM allennlp classification model along with preprocessors, saved in the same directory:
         [required]
         - model.tar.gz            : trained model
+        
+    Also requires:
+        - models/customization_package/*            : scripts for the custom models
         
     Predicts labels and probabilities on the data with fields:
         - Left span tokens
         - Right span tokens
+        - Additional features
     """
 
     def __init__(self, model_dir_path):
@@ -55,36 +60,41 @@ class AllenNLPClassifier:
         self._left_dummy_placement = '-'
         self._right_dummy_placement = '###'
 
-        self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'))
+        self._model = CustomBiMPMPredictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'),
+                                                     predictor_name='custom_bimpm_predictor')
 
-    def predict_proba(self, snippet_x, snippet_y):
+    def predict_proba(self, snippet_x, snippet_y, features):
         if len(snippet_x.split()) == 0 or len(snippet_y.split()) == 0:
             return [1., 0.]
 
         return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False))['probs']
+                                   self._prepare_sequence(snippet_y, is_left_snippet=False),
+                                   features)['probs']
 
-    def predict_proba_batch(self, snippet_x, snippet_y):
+    def predict_proba_batch(self, snippet_x, snippet_y, features):
         predictions = self._model.predict_batch_json([
             {'premise': self._prepare_sequence(snippet_x[i], is_left_snippet=True),
-             'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False)} if 0 < len(
+             'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False),
+             'metadata': features[i]} if 0 < len(
                 snippet_x[i]) and 0 < len(snippet_y[i]) else
-            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement}
+            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'metadata': '0'}
             for i in range(len(snippet_x))])
 
         return [prediction['probs'] for prediction in predictions]
 
-    def predict(self, snippet_x, snippet_y):
+    def predict(self, snippet_x, snippet_y, features):
         return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False))['label']
+                                   self._prepare_sequence(snippet_y, is_left_snippet=False),
+                                   features)['label']
 
-    def predict_batch(self, snippet_x, snippet_y):
+    def predict_batch(self, snippet_x, snippet_y, features):
         predictions = self._model.predict_batch_json([
             {'premise': self._prepare_sequence(snippet_x[i], is_left_snippet=True),
-             'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False)} if 0 < len(
+             'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False),
+             'metadata': features[i]} if 0 < len(
                 snippet_x[i]) <= self._max_len and 0 < len(
                 snippet_y[i]) <= self._max_len else
-            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement}
+            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'metadata': '0'}
             for i in range(len(snippet_x))])
 
         return [prediction['label'] for prediction in predictions]
