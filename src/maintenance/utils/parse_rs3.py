@@ -344,50 +344,7 @@ def get_nonspan_rel(nodes, node):
 
 def get_pairs(df, text):
     pd.options.mode.chained_assignment = None
-    
-#     text = text.replace('  \n', '#####')
-#     text = text.replace(' \n', '#####')
-#     text = text + '#####'
-#     text = text.replace('#####', '\n')
-#     text_html_map = {
-#         '\n': r' ',
-#         '&gt;': r'>',
-#         '&lt;': r'<',
-#         '&amp;': r'&',
-#         '&quot;': r'"',
-#         '&ndash;': r'–',
-#         '##### ': r'',
-#         '\\\\\\\\': r'\\',
-#         '<': ' менее ',
-#         '&lt;': ' менее ',
-#         r'>': r' более ',
-#         r'&gt;': r' более ',
-#         r'„': '"',
-#         r'&amp;': r'&',
-#         r'&quot;': r'"',
-#         r'&ndash;': r'–',
-#         ' & ': ' and ',  #
-#         '&id=': r'_id=',
-#         '&': '_',
-#         '   ': r' ',
-#         '  ': r' ',
-#         '  ': r' ',
-#         '——': r'-',
-#         '—': r'-',
-#         #'/': r'',
-#         '\^': r'',
-#         '^': r'',
-#         '±': r'+',
-#         'y': r'у',
-#         'xc': r'хс',
-#         'x': r'х'
-#     }
-
-#     for key in text_html_map.keys():
-#         text = text.replace(key, text_html_map[key])
-#         df['snippet'].replace(key, text_html_map[key], regex=True, inplace=True)
-    
-          
+             
     df['id'] = df.index
     table = df.merge(df, left_on='dep_parent', right_on='id', how='inner', sort=False, right_index=True) \
         .drop(columns=['dep_parent_y', 'dep_rel_y', 'dep_parent_x', 'kind_x', 'kind_y']) \
@@ -414,12 +371,6 @@ def get_pairs(df, text):
     table['snippet_x'] = table['snippet_x'].apply(lambda row: row.strip())
     table['snippet_y'] = table['snippet_y'].apply(lambda row: row.strip())
     
-#     def find_in_text(plain_text, row):
-#         cand = plain_text.find(row.strip())
-#         if cand == -1:
-#             cand = plain_text.find(row.replace('  ', ' ').strip())
-#         return cand
-
     def find_in_text(plain_text, x, y):
         cand_x = plain_text.find(x)
         cand_y = plain_text.find(y, cand_x + len(x))
@@ -431,8 +382,7 @@ def get_pairs(df, text):
     locations = table.apply(lambda row: find_in_text(text, row.snippet_x.strip(), row.snippet_y.strip()), axis=1)
     table['loc_x'] = locations.map(lambda row: row[0])
     table['loc_y'] = locations.map(lambda row: row[1])
-    #table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
-          
+
     def exact_order(row):
         
         if 'order' in row.keys():
@@ -484,9 +434,6 @@ def get_pairs(df, text):
     table['loc_x'] = locations.map(lambda row: row[0])
     table['loc_y'] = locations.map(lambda row: row[1])
     
-#     table['loc_x'] = table.snippet_x.apply(lambda row: find_in_text(text, row.strip()))
-#     table['loc_y'] = table.snippet_y.apply(lambda row: find_in_text(text, row.strip()))
-    #table['order'] = table.apply(lambda row: exact_order(row), axis=1)
     table = table[table.loc_x != -1]
     table = table[table.loc_y != -1]
     
@@ -504,14 +451,6 @@ def get_pairs(df, text):
                         ], inplace=True)
 
     table.drop_duplicates(inplace=True)
-    
-#     edus_list = []
-#     for i in range(len(edus)-1, 0, -1):
-#         for j in range(i-1, 0, -1):
-#             if len(edus[j][0]) > 4:
-#                 edus[i][0] = edus[i][0].replace(edus[j][0], '')
-#         edus_list.append(edus[i][0].strip())
-#     edus_list.append(edus[0][0])
     
     return table
 
@@ -586,6 +525,7 @@ for rstfile in files:
     edus = xmldoc.getElementsByTagName('segment')
     with open(out_file.replace("json", "edus"), 'w') as f:
         for edu in edus:
+            #if edu.attributes['relname'].nodeValue != "antithesis":
             if len(edu.childNodes) > 0:
                 f.write(edu.childNodes[0].nodeValue + '\n')
 
@@ -652,7 +592,7 @@ for rstfile in files:
                     for node_id in range(node.left, node.right + 1):
                         if nodes.get(str(node_id)):
                             dummy_text += nodes[str(node_id)].text + " "
-                    #print('2.2', node.id, dummy_text)
+                    
                     node.text = dummy_text
                     node.children = []
                     out_graph.append(node)
@@ -676,7 +616,7 @@ for rstfile in files:
                             node.text = dummy_text
                             #print('4.', node.id, node.text)
 
-                            if node.dep_rel in ['joint_m', 'same-unit_m']:
+                            if node.dep_rel in ['joint_m', 'same-unit_m', 'sequence_m']:
                                 # if node.dep_rel == 'joint_m':
                                 # print('4.', node.id, node.text, node.dep_rel)
                                 children = nodes[node.parent].children
@@ -696,17 +636,14 @@ for rstfile in files:
             elif node.kind == "edu":
                 dep_parent = find_dep_head(nodes, nid, nid, [])
                 if dep_parent is None:
-                    # print('a.')
                     # This is the root
                     node.dep_parent = "0"
                     node.dep_rel = "ROOT"
                 elif node.parent != '0' and nodes[node.parent].kind == 'span':
-                    # print('b.')
                     node.dep_parent = "0"
                     node.dep_rel = "ROOT"
                 else:
-                    #print('c.', node.parent, dep_parent, nodes[dep_parent].text, node.dep_rel, node.text)
-                    if node.dep_rel in ['joint_m', 'same-unit_m']:
+                    if node.dep_rel in ['joint_m', 'same-unit_m', 'sequence_m']:
                         # if node.dep_rel == 'joint_m':
                         # print('4.', node.id, node.text, node.dep_rel)
                         children = nodes[node.parent].children

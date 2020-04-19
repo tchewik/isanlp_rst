@@ -273,7 +273,7 @@ class LargeNNTreePredictor(NNTreePredictor):
     """
 
     def predict_pair_proba(self, features):
-        _same_sentence_bonus = 0.1
+        _same_sentence_bonus = 0.25
 
         if type(features) == pd.DataFrame:
             probas_text_level = self.relation_predictor_text.predict_proba_batch(
@@ -299,8 +299,9 @@ class LargeNNTreePredictor(NNTreePredictor):
             same_sentence = [feature['same_sentence'].map(str) for feature in features]
 
             probas = self.relation_predictor_text.predict_proba_batch(snippet_x, snippet_y, same_sentence)
+            sentence_level_map = list(map(float, [feature['same_sentence'] == 1 for feature in features]))
 
-            return [proba[1] for proba in probas]
+            return [probas[i][1] + sentence_level_map[i] for i in range(len(probas))]
 
     def predict_label(self, features):
         _class_mapper = {
