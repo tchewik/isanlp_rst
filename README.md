@@ -64,7 +64,7 @@ res = ppl("Президент Филиппин заявил, что поедет
 <img src="example_tree.png" width="350">
 
 ## Package overview  
-1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_srl_framebank/processor_rst.py`.
+1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_rst/processor_rst.py`.
 2. Trained neural network models for RST parser: models for segmentation, structure prediction, and label prediction. Path: `models`.
 3. Docker container [tchewik/isanlp_rst](https://hub.docker.com/r/tchewik/isanlp_rst/) that contains preinstalled libraries and models. The container provides gRPC service for RST parsing. The container can be obtained with the command:  
 `docker run --rm -p 3335:3333 tchewik/isanlp_rst`
