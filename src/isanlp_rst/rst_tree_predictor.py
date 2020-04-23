@@ -328,10 +328,9 @@ class LargeNNTreePredictor(NNTreePredictor):
                                                   features.loc['snippet_y'])
 
         if type(result) == list:
-            return [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
-
-        if _class_mapper.get(result):
-            return _class_mapper.get(result)
+            result = [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
+            
+            if len(result) == 1:
+                result = result[0]
 
         return result
-

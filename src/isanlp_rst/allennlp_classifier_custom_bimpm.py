@@ -9,10 +9,10 @@ class AllenNLPClassifier:
     Wrapper for custom BiMPM allennlp classification model along with preprocessors, saved in the same directory:
         [required]
         - model.tar.gz            : trained model
-        
+
     Also requires:
         - models/customization_package/*            : scripts for the custom models
-        
+
     Predicts labels and probabilities on the data with fields:
         - Left span tokens
         - Right span tokens
@@ -64,12 +64,14 @@ class AllenNLPClassifier:
                                                      predictor_name='custom_bimpm_predictor')
 
     def predict_proba(self, snippet_x, snippet_y, features):
-        if len(snippet_x.split()) == 0 or len(snippet_y.split()) == 0:
+        _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
+        _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
+        
+        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(_snippet_x.split()) > self._max_len or len(
+                _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
-        return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False),
-                                   features)['probs']
+        return self._model.predict(_snippet_x, _snippet_y, features)['probs']
 
     def predict_proba_batch(self, snippet_x, snippet_y, features):
         predictions = self._model.predict_batch_json([
@@ -83,9 +85,14 @@ class AllenNLPClassifier:
         return [prediction['probs'] for prediction in predictions]
 
     def predict(self, snippet_x, snippet_y, features):
-        return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False),
-                                   features)['label']
+        _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
+        _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
+        
+        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(_snippet_x.split()) > self._max_len or len(
+            _snippet_y.split()) > self._max_len:
+            return [1., 0.]
+
+        return self._model.predict(_snippet_x, _snippet_y, features)['label']
 
     def predict_batch(self, snippet_x, snippet_y, features):
         predictions = self._model.predict_batch_json([

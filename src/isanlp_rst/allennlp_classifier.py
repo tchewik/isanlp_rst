@@ -8,7 +8,7 @@ class AllenNLPClassifier:
     Wrapper for allennlp classification model along with preprocessors, saved in the same directory:
         [required]
         - model.tar.gz            : trained model
-        
+
     Predicts labels and probabilities on the data with fields:
         - Left span tokens
         - Right span tokens
@@ -58,11 +58,15 @@ class AllenNLPClassifier:
         self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'))
 
     def predict_proba(self, snippet_x, snippet_y):
-        if len(snippet_x.split()) == 0 or len(snippet_y.split()) == 0:
+        _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
+        _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
+
+        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
+                _snippet_x.split()) > self._max_len or len(
+                _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
-        return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False))['probs']
+        return self._model.predict(_snippet_x, _snippet_y)['probs']
 
     def predict_proba_batch(self, snippet_x, snippet_y):
         predictions = self._model.predict_batch_json([
@@ -75,8 +79,15 @@ class AllenNLPClassifier:
         return [prediction['probs'] for prediction in predictions]
 
     def predict(self, snippet_x, snippet_y):
-        return self._model.predict(self._prepare_sequence(snippet_x, is_left_snippet=True),
-                                   self._prepare_sequence(snippet_y, is_left_snippet=False))['label']
+        _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
+        _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
+
+        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
+                _snippet_x.split()) > self._max_len or len(
+                _snippet_y.split()) > self._max_len:
+            return 'other_NN'
+
+        return self._model.predict(_snippet_x, _snippet_y)['label']
 
     def predict_batch(self, snippet_x, snippet_y):
         predictions = self._model.predict_batch_json([

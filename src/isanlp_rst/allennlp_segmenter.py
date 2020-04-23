@@ -10,7 +10,7 @@ class AllenNLPSegmenter:
 
     def __init__(self, model_dir_path):
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
-        self.predictor = Predictor.from_path(self._model_path)
+        self.predictor = Predictor.from_path(self._model_path, cuda_device=0)
         self._separator = 'U-S'
         self._threshold = 0.25
 
@@ -36,6 +36,7 @@ class AllenNLPSegmenter:
             prediction['proba'] = torch.nn.functional.softmax(logits, dim=1).tolist()
             pred = np.array(prediction['proba'][:sentences[i].end - sentences[i].begin])[:,
                    1] > self._threshold
+#             pred = np.array(prediction['tags'][:sentences[i].end - sentences[i].begin]) == self._separator
 
             # The first token in a sentence is always a separator
             if len(pred) > 0:
