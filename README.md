@@ -16,7 +16,7 @@ pip install git+https://github.com/IINemo/isanlp.git@discourse
 docker run --rm -p 3334:3333 inemo/isanlp_udpipe
 docker run --rm -p 3335:3333 tchewik/isanlp_rst
 ```  
-2. Connect from python using `PipelineDefault`:  
+3. Connect from python using `PipelineDefault`:  
 ```python  
 #
 from isanlp_srl_framebank.pipeline_default import PipelineDefault  
@@ -62,6 +62,17 @@ res = ppl("Президент Филиппин заявил, что поедет
 ```  
 5. The variable `res['rst']` can be visualized as:  
 <img src="example_tree.png" width="350">
+
+6. To convert DiscourseUnit object to .rs3 file with visualization, run:
+```python 
+
+from src.isanlp_rst.utils.export_to_rs3 import Exporter
+
+exporter = Exporter()
+
+single_tree = res['rst'][0]
+exporter(tree, 'filename.rs3', encoding='utf8')
+```
 
 ## Package overview  
 1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_rst/processor_rst.py`.
