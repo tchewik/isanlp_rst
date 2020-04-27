@@ -66,8 +66,8 @@ res = ppl("Президент Филиппин заявил, что поедет
 6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
 ```python 
 
-from utils.export_to_rs3 import ForestExporter  # for list of units (whole document)
-from utils.export_to_rs3 import Exporter  # for single unit (one tree)
+from src.isanlp_rst.utils.export_to_rs3 import ForestExporter  # for list of units (whole document)
+from src.isanlp_rst.utils.export_to_rs3 import Exporter  # for single unit (one tree)
 
 exporter = ForestExporter(encoding='utf8')
 exporter(res['rst'], 'filename.rs3')
