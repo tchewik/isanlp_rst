@@ -40,10 +40,13 @@ class Root(Group):
 
 
 class Exporter:
-    def __call__(self, tree, filename, encoding='cp1251'):
+    def __init__(self, encoding='cp1251'):
+        self._encoding = encoding
+    
+    def __call__(self, tree, filename):
         self.gc = GroupCreator(tree.id)
 
-        with open(filename, 'w', encoding=encoding) as fo:
+        with open(filename, 'w', encoding=self._encoding) as fo:
             fo.write('<rst>\n')
             fo.write(self.make_header(tree))
             fo.write(self.make_body(tree))

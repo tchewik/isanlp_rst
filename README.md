@@ -68,10 +68,10 @@ res = ppl("Президент Филиппин заявил, что поедет
 
 from src.isanlp_rst.utils.export_to_rs3 import Exporter
 
-exporter = Exporter()
+exporter = Exporter(encoding='utf8')
 
 single_tree = res['rst'][0]
-exporter(tree, 'filename.rs3', encoding='utf8')
+exporter(single_tree, 'filename.rs3')
 ```
 
 ## Package overview  
