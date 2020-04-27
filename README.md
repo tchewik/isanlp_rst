@@ -63,15 +63,14 @@ res = ppl("Президент Филиппин заявил, что поедет
 5. The variable `res['rst']` can be visualized as:  
 <img src="example_tree.png" width="350">
 
-6. To convert DiscourseUnit object to .rs3 file with visualization, run:
+6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
 ```python 
 
-from src.isanlp_rst.utils.export_to_rs3 import Exporter
+from utils.export_to_rs3 import ForestExporter  # for list of units (whole document)
+from utils.export_to_rs3 import Exporter  # for single unit (one tree)
 
-exporter = Exporter(encoding='utf8')
-
-single_tree = res['rst'][0]
-exporter(single_tree, 'filename.rs3')
+exporter = ForestExporter(encoding='utf8')
+exporter(res['rst'], 'filename.rs3')
 ```
 
 ## Package overview  

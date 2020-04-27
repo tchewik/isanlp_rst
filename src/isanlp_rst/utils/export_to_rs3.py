@@ -8,6 +8,7 @@ class Segment:
     def __str__(self):
         if self.parent:
             return f'<segment id="{self.id}" parent="{self.parent}" relname="{self.relname}">{self.text}</segment>'
+        
         return f'<segment id="{self.id}" relname="{self.relname}">{self.text}</segment>'
 
 
@@ -129,6 +130,59 @@ class Exporter:
         groups, edus = self.get_groups_and_edus(tree)
         if len(edus) > 1:
             groups.append(Root(tree.id))
+
+        result = '\t<body>\n'
+        for edu in edus + groups:
+            result += '\t\t' + str(edu) + '\n'
+        result += '\t</body>\n'
+
+        return result
+
+class ForestExporter:
+    def __init__(self, encoding='cp1251'):
+        self._encoding = encoding
+        self._tree_exporter = Exporter(self._encoding)
+    
+    def __call__(self, trees, filename):
+        self.gc = GroupCreator(trees[-1].id)
+        
+        with open(filename, 'w', encoding=self._encoding) as fo:
+            fo.write('<rst>\n')
+            fo.write(self.make_header(trees))
+            fo.write(self.make_body(trees))
+            fo.write('</rst>')
+        
+    def compile_relation_set(self, trees):
+        result = []
+        
+        for tree in trees:
+            result += list(set(self._tree_exporter.compile_relation_set(tree)))
+                
+        return result
+    
+    def make_header(self, trees):
+        relations = list(set(self.compile_relation_set(trees)))
+
+        result = '\t<header>\n'
+        result += '\t\t<relations>\n'
+        for rel in relations:
+            _relname, _type = rel.split('_')
+            _type = 'multinuc' if _type == 'NN' else 'rst'
+            result += f'\t\t\t<rel name="{_relname}" type="{_type}" />\n'
+        result += '\t\t</relations>\n'
+        result += '\t</header>\n'
+
+        return result
+    
+    def make_body(self, trees):
+        groups, edus = [], []
+        
+        for tree in trees:
+            _groups, _edus = self._tree_exporter.get_groups_and_edus(tree)
+            if len(_edus) > 1:
+                _groups.append(Root(tree.id))
+            groups += _groups
+            edus += _edus
 
         result = '\t<body>\n'
         for edu in edus + groups:
