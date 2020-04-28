@@ -61,10 +61,12 @@ class Exporter:
             result += self.compile_relation_set(tree.left)
         if tree.right.left:
             result += self.compile_relation_set(tree.right)
+            
         return result
 
     def make_header(self, tree):
         relations = list(set(self.compile_relation_set(tree)))
+        relations = [value if value != "elementary__" else "antithesis_NN" for value in relations]
 
         result = '\t<header>\n'
         result += '\t\t<relations>\n'
@@ -157,7 +159,8 @@ class ForestExporter:
         
         for tree in trees:
             result += list(set(self._tree_exporter.compile_relation_set(tree)))
-                
+               
+        result = [value if value != "elementary__" else "antithesis_NN" for value in result]
         return result
     
     def make_header(self, trees):
@@ -189,4 +192,4 @@ class ForestExporter:
             result += '\t\t' + str(edu) + '\n'
         result += '\t</body>\n'
 
-        return result
+        return result.replace('\u2015', '-')
