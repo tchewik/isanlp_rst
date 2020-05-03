@@ -59,8 +59,11 @@ class GoldTreePredictor(RSTTreePredictor):
 
     def predict_label(self, features):
         def _get_label(left_snippet, right_snippet):
-            label = self.corpus[
-                ((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet))].category_id.values
+            joint = self.corpus[
+                ((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet))]
+            label = joint.category_id.map(lambda row: row.split('_')[0]) + '_' + joint.order
+            label = label.values
+
             if label.size == 0:
                 return 'relation_NN'
 

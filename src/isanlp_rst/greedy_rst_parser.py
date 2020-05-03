@@ -32,8 +32,7 @@ class GreedyRSTParser:
         self.tree_predictor.genre = genre
 
         nodes = edus
-
-        max_id = edus[-1].id
+        max_id = self._get_max_id(nodes)
 
         # initialize scores
         features = self.tree_predictor.initialize_features(nodes, 
@@ -116,3 +115,11 @@ class GreedyRSTParser:
             nodes = [root]
 
         return nodes
+
+    def _get_max_id(self, dus):
+        max_id = dus[-1].id
+        for du in dus[:-1]:
+            if du.id > max_id:
+                max_id = du.id
+                
+        return max_id

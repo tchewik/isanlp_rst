@@ -88,9 +88,10 @@ class AllenNLPClassifier:
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
         
-        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(_snippet_x.split()) > self._max_len or len(
-            _snippet_y.split()) > self._max_len:
-            return [1., 0.]
+        if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
+                _snippet_x.split()) > self._max_len or len(
+                _snippet_y.split()) > self._max_len:
+            return 'other_NN'
 
         return self._model.predict(_snippet_x, _snippet_y, features)['label']
 
