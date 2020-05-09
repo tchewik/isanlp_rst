@@ -16,10 +16,13 @@ pip install git+https://github.com/IINemo/isanlp.git@discourse
 docker run --rm -p 3334:3333 inemo/isanlp_udpipe
 docker run --rm -p 3335:3333 tchewik/isanlp_rst
 ```  
-3. Connect from python using `PipelineDefault`:  
+3. Connect from python using `PipelineCommon`:  
 ```python  
 #
-from isanlp_srl_framebank.pipeline_default import PipelineDefault  
+from isanlp import PipelineCommon
+from isanlp.processor_remote import ProcessorRemote
+from isanlp.ru.processor_mystem import ProcessorMystem
+from isanlp.ru.converter_mystem_to_ud import ConverterMystemToUd 
 #
 ppl = PipelineCommon([
     (ProcessorRemote('localhost', 3334, '0'),
