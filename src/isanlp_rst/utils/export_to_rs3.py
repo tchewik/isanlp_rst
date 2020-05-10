@@ -11,7 +11,6 @@ class Segment:
         
         return f'<segment id="{self.id}" relname="{self.relname}">{self.text}</segment>'
 
-
 class GroupCreator:
     def __init__(self, _id):
         self._id = _id
@@ -45,7 +44,6 @@ class Exporter:
         self._encoding = encoding
     
     def __call__(self, tree, filename):
-        self.gc = GroupCreator(tree.id)
 
         with open(filename, 'w', encoding=self._encoding) as fo:
             fo.write('<rst>\n')
@@ -146,7 +144,6 @@ class ForestExporter:
         self._tree_exporter = Exporter(self._encoding)
     
     def __call__(self, trees, filename):
-        self.gc = GroupCreator(trees[-1].id)
         
         with open(filename, 'w', encoding=self._encoding) as fo:
             fo.write('<rst>\n')

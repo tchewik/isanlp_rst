@@ -56,7 +56,7 @@ class GreedyRSTParser:
                 right=nodes[j + 1],
                 relation=relation,
                 nuclearity=nuclearity,
-                proba=scores[j],
+                proba=min(1., scores[j]),
                 text=annot_text[nodes[j].start:nodes[j + 1].end].strip()
             )
 
@@ -109,7 +109,7 @@ class GreedyRSTParser:
                 right=nodes[1],
                 relation=relation,
                 nuclearity=nuclearity,
-                proba=scores[0],
+                proba=min(1., scores[0]),
                 text=annot_text[nodes[0].start:nodes[1].end].strip()
             )
             nodes = [root]

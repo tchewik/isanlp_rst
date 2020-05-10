@@ -198,6 +198,24 @@ class NNTreePredictor(CustomTreePredictor):
     """
     Contains trained classifiers and feature processors needed for tree prediction.
     """
+    
+    def extract_features(self, left_node: DiscourseUnit, right_node: DiscourseUnit,
+                         annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                         annot_syntax_dep_tree):
+        pair = pd.DataFrame({
+            'snippet_x': [left_node.text.strip()],
+            'snippet_y': [right_node.text.strip()],
+        })
+        
+        features = self.features_processor(pair, annot_text=annot_text,
+                                           annot_tokens=annot_tokens, annot_sentences=annot_sentences,
+                                           annot_postag=annot_postag, annot_morph=annot_morph,
+                                           annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
+        
+        features['snippet_x'] = features['tokens_x'].map(lambda row: ' '.join(row)).values
+        features['snippet_y'] = features['tokens_y'].map(lambda row: ' '.join(row)).values
+
+        return features
 
     def initialize_features(self, nodes,
                             annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
@@ -302,6 +320,80 @@ class LargeNNTreePredictor(NNTreePredictor):
             same_sentence = [feature['same_sentence'].map(str) for feature in features]
 
             probas = self.relation_predictor_text.predict_proba_batch(snippet_x, snippet_y, same_sentence)
+            sentence_level_map = list(map(float, [feature['same_sentence'] == 1 for feature in features]))
+
+            return [probas[i][1] + sentence_level_map[i] for i in range(len(probas))]
+
+    def predict_label(self, features):
+        _class_mapper = {
+            'background_NS': 'elaboration_NS',
+            'background_SN': 'preparation_SN',
+            'comparison_NN': 'contrast_NN',
+            'interpretation-evaluation_SN': 'elaboration_NS',
+            'evidence_NS': 'elaboration_NS',
+            'restatement_NN': 'joint_NN',
+            'sequence_NN': 'joint_NN'
+        }
+
+        result = 'relation'
+
+        if not self.label_predictor:
+            return result
+
+        if type(features) == pd.DataFrame:
+            result = self.label_predictor.predict_batch(features['snippet_x'].values.tolist(),
+                                                        features['snippet_y'].values.tolist())
+
+        if type(features) == pd.Series:
+            result = self.label_predictor.predict(features.loc['snippet_x'],
+                                                  features.loc['snippet_y'])
+
+        if type(result) == list:
+            result = [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
+            
+            if len(result) == 1:
+                result = result[0]
+
+        return result
+
+    
+class ContextualNNTreePredictor(NNTreePredictor):
+    """
+    Contains trained classifiers and feature processors needed for tree prediction.
+    """
+
+    def predict_pair_proba(self, features):
+        _same_sentence_bonus = .5
+
+        if type(features) == pd.DataFrame:
+            probas_text_level = self.relation_predictor_text.predict_proba_batch(
+                features['snippet_x'].values.tolist(),
+                features['snippet_y'].values.tolist(),
+                features['same_sentence'].map(str).values.tolist(),
+                features['left_context'].values.tolist(),
+                features['right_context'].values.tolist())
+
+            sentence_level_map = list(map(float, list(features['same_sentence'] == 1)))
+
+            return [probas_text_level[i][1] + _same_sentence_bonus * sentence_level_map[i] for i in
+                    range(len(probas_text_level))]
+
+        if type(features) == pd.Series:
+
+            return self.relation_predictor_text.predict_proba(features.loc['snippet_x'],
+                                                              features.loc['snippet_y'],
+                                                              str(features.loc['same_sentence'],
+                                                              features.loc['left_context'],
+                                                              features.loc['right_context']))[0][1] + (
+                               features.loc['same_sentence'] == 1) * _same_sentence_bonus
+
+        if type(features) == list:
+            snippet_x = [feature['snippet_x'] for feature in features]
+            snippet_y = [feature['snippet_y'] for feature in features]
+            same_sentence = [feature['same_sentence'].map(str) for feature in features]
+
+            probas = self.relation_predictor_text.predict_proba_batch(snippet_x, snippet_y, same_sentence,
+                                                                      left_context, right_context)
             sentence_level_map = list(map(float, [feature['same_sentence'] == 1 for feature in features]))
 
             return [probas[i][1] + sentence_level_map[i] for i in range(len(probas))]

@@ -148,7 +148,7 @@ class ProcessorRST:
                                                   chunk['morph'], chunk['postag'], chunk['syntax_dep_tree'])
 
                     dus += trees
-                    start_id = dus[-1].id + 1
+                    start_id = max([tree.id for tree in dus]) + 1
 
             # 2. Process paragraphs into the document-level annotation
             trees = self.document_parser(dus,

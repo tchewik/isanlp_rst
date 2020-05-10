@@ -35,6 +35,8 @@ class FeaturesProcessor:
 
         self.embed_model_path = os.path.join(model_dir_path, 'w2v', 'default', 'model.vec')
         self._synonyms_vocabulary = synonyms_vocabulary
+        
+        self._context_length = 3
 
         self.relations_related = relations_related
         self.stop_words = nltk.corpus.stopwords.words('russian')
@@ -58,7 +60,7 @@ class FeaturesProcessor:
     def _find_y(self, snippet_x, snippet_y, loc_x):
         result = self.annot_text.find(snippet_y, loc_x + len(snippet_x) - 1)
         if result < 1:
-            result = self.annot_text.find(snippet_y)
+            result = self.annot_text.find(snippet_y, loc_x+1)
         return result
 
     def __call__(self, df_, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
@@ -83,13 +85,13 @@ class FeaturesProcessor:
         if not 'loc_x' in df.keys():
             df['loc_x'] = df.snippet_x.map(self.annot_text.find)
         if not 'loc_y' in df.keys():
-            df['loc_y'] = df.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
+            df['loc_y'] = df.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x-1), axis=1)
 
         df['token_begin_x'] = df.loc_x.map(self.locate_token)
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
 
         # ToDO: bug in ling_20 (in progress)
-        df = df[df['loc_y'] != -1]
+        #df = df[df['loc_y'] != -1]
 
         try:
             df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)),  # + 1,
@@ -97,15 +99,19 @@ class FeaturesProcessor:
             df['token_end_y'] = df['token_end_y'] + (df['token_end_y'] == df['token_begin_y']) * 1
         except:
             print(f'Unable to locate second snippet >>> {(df.snippet_x.values, df.snippet_y.values)}', file=sys.stderr)
-            return -1
+            df['tokens_x'] = df.snippet_x.map(lambda row: row.split())
+            df['tokens_y'] = df.snippet_y.map(lambda row: row.split())
+            df['left_context'] = ['_END_'] * self._context_length
+            df['right_context'] = ['_END_'] * self._context_length
+            df['same_sentence'] = 0
+            return df
 
         # length of tokens sequence
         df['len_w_x'] = df['token_begin_y'] - df['token_begin_x']
         df['len_w_y'] = df['token_end_y'] - df['token_begin_y']  # +1
 
         df['snippet_x_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                                        range(row.token_begin_x, row.token_begin_y)] if
-                                                      pair]], axis=1)
+                                                                        range(row.token_begin_x, row.token_begin_y)] ]], axis=1)
         df['snippet_x_locs'] = df.snippet_x_locs.map(lambda row: row[0])
         # print(df[['snippet_x', 'snippet_y', 'snippet_x_locs']].values)
         broken_pair = df[df.snippet_x_locs.map(len) < 1]
@@ -114,12 +120,12 @@ class FeaturesProcessor:
                 f"Unable to locate first snippet >>> {df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
             df = df[df.snippet_x_locs.map(len) > 0]
-
-        df['snippet_y_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                                        range(row.token_begin_y, row.token_end_y)] if
-                                                      pair]], axis=1)
+        
+        #print(df[['snippet_x', 'snippet_y', 'token_begin_y', 'token_end_y']])
+        df['snippet_y_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in range(row.token_begin_y, row.token_end_y)] ]], axis=1)
         df['snippet_y_locs'] = df.snippet_y_locs.map(lambda row: row[0])
         broken_pair = df[df.snippet_y_locs.map(len) < 1]
+            
         if not broken_pair.empty:
             print(
                 f"Unable to locate second snippet >>> {df[df.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
@@ -130,7 +136,7 @@ class FeaturesProcessor:
                 'snippet_y': df2['snippet_x'].values,
                 'loc_y': df2['loc_x'].values,
                 'token_begin_y': df2['token_begin_x'].values,
-            })
+                })
 
             df2 = _df2[:]
             df2['loc_x'] = df2.apply(lambda row: self.annot_text.find(row.snippet_x, row.loc_y - 3), axis=1)
@@ -144,13 +150,11 @@ class FeaturesProcessor:
             df2['len_w_y'] = df2['token_end_y'] - df2['token_begin_y']  # +1
             df2['snippet_x_locs'] = df2.apply(
                 lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                range(row.token_begin_x, row.token_begin_y)] if
-                              pair]], axis=1)
+                                                range(row.token_begin_x, row.token_begin_y)] ]], axis=1)
             df2['snippet_x_locs'] = df2.snippet_x_locs.map(lambda row: row[0])
             df2['snippet_y_locs'] = df2.apply(
                 lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                range(row.token_begin_y, row.token_end_y)] if
-                              pair]], axis=1)
+                                                range(row.token_begin_y, row.token_end_y)] ]], axis=1)
             df2['snippet_y_locs'] = df2.snippet_y_locs.map(lambda row: row[0])
             broken_pair = df2[df2.snippet_y_locs.map(len) < 1]
             if not broken_pair.empty:
@@ -198,6 +202,14 @@ class FeaturesProcessor:
         # get tokens
         df['tokens_x'] = df.apply(lambda row: self.get_tokens(row.token_begin_x, row.token_begin_y), axis=1)
         df['tokens_y'] = df.apply(lambda row: self.get_tokens(row.token_begin_y, row.token_end_y), axis=1)
+        
+        # get context
+        df['left_context'] = df.apply(lambda row: ' '.join(
+            self.get_tokens(row.token_begin_x - self._context_length, row.token_begin_x)), axis=1)
+        df['right_context'] = df.apply(lambda row: ' '.join(
+            self.get_tokens(row.token_end_y, row.token_end_y + self._context_length)), axis=1)
+        
+        #print(df[['left_context', 'right_context']].values)
 
         # get lemmas
         df['lemmas_x'] = df.snippet_x_locs.map(self.get_lemma)
@@ -261,7 +273,7 @@ class FeaturesProcessor:
         for i, sentence in enumerate(self.annot_sentences):
             if sentence.begin <= token < sentence.end:
                 return i, token - sentence.begin
-        return ()
+        return (-1, -1)
 
     def locate_root(self, row):
         if row.same_sentence:
@@ -288,7 +300,21 @@ class FeaturesProcessor:
         return res
 
     def get_tokens(self, begin, end):
-        return [self.annot_tokens[i].text for i in range(begin, end)]
+        result = []
+        
+        if begin < 0:
+            result += ['_END_'] * abs(begin)
+            begin = 0
+        
+        result += [self.annot_tokens[i].text for i in range(begin, min(end, len(self.annot_tokens) - 1))]
+        
+        if end >= len(self.annot_tokens):
+            result += ['_END_'] * (len(self.annot_tokens) - end)
+        
+        if result:
+            return result
+        else:
+            return ['_END_'] * self._context_length
 
     def get_lemma(self, positions):
         return [self.annot_lemma[position[0]][position[1]] for position in positions]
