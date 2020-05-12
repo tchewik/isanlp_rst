@@ -19,8 +19,9 @@ class AllenNLPClassifier:
         - Additional features
     """
 
-    def __init__(self, model_dir_path):
+    def __init__(self, model_dir_path, cuda_device=-1):
         self.model_dir_path = model_dir_path
+        self._cuda_device = cuda_device
         self._max_len = 100
 
         self._symbol_map = {
@@ -61,7 +62,8 @@ class AllenNLPClassifier:
         self._right_dummy_placement = '###'
 
         self._model = CustomBiMPMPredictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'),
-                                                     predictor_name='custom_bimpm_predictor')
+                                                     predictor_name='custom_bimpm_predictor',
+                                                     cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, features):
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)

@@ -33,9 +33,14 @@ class AllenNLPSegmenter:
         for i, prediction in enumerate(predictions):
             pred = np.array(prediction['tags'][:sentences[i].end - sentences[i].begin]) == self._separator
 
-            # The first token in a sentence is always a separator
+            # The first token in a sentence is a separator
+            # if it is not a point in a list
             if len(pred) > 0:
-                pred[0] = True
+                if i > 0:
+                    if predictions[i-1]['words'][1] == '.' and predictions[i-1]['words'][0] in "0123456789":
+                        pred[0] = False
+                else:
+                    pred[0] = True
 
             # No single-token EDUs
             for j, token in enumerate(pred[:-1]):
@@ -44,7 +49,7 @@ class AllenNLPSegmenter:
                         pred[j + 1] = False
                     else:
                         pred[j] = False
-
+                        
             result += list(pred)
 
         return np.argwhere(np.array(result) == True)[:, 0]
