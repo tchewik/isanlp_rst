@@ -4,7 +4,7 @@ from allennlp_classifier import AllenNLPClassifier
 from allennlp_classifier_custom_bimpm import AllenNLPClassifier as LargeAllenNLPClassifier
 from allennlp_segmenter import AllenNLPSegmenter
 from features_processor_default import FeaturesProcessor as FP_feature_rich
-from features_processor_tokenizer import FeaturesProcessor as FP_tokenizer
+from features_processor_default import FeaturesProcessorTokenizer as FP_tokenizer
 from greedy_rst_parser import GreedyRSTParser
 from isanlp.annotation import Sentence
 from model_segmenter import ModelSegmenter
