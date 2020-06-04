@@ -52,7 +52,7 @@ class Exporter:
             fo.write('</rst>')
 
     def compile_relation_set(self, tree):
-        result = ['_'.join([tree.relation, tree.nuclearity])]
+        result = ['_'.join([tree.relation, tree.nuclearity])] + ['antithesis_NN']
         if not tree.left:
             return result
         if tree.left.left:
@@ -96,9 +96,9 @@ class Exporter:
             if tree.nuclearity == "SN":
                 groups.append(Group(tree.left.id, 'span', tree.right.id, tree.relation))
             elif tree.nuclearity == "NS":
-                groups.append(Group(tree.left.id, 'span', tree.id, 'span'))
+                groups.append(Group(tree.left.id, 'multinuc', tree.id, 'span'))
             else:
-                groups.append(Group(tree.left.id, 'multinuc', tree.id, tree.relation))
+                groups.append(Group(tree.left.id, 'span', tree.id, tree.relation))
 
             _groups, _edus = self.get_groups_and_edus(tree.left)
             groups += _groups
@@ -114,11 +114,11 @@ class Exporter:
 
         else:
             if tree.nuclearity == "SN":
-                groups.append(Group(tree.right.id, 'span', tree.id, 'span'))
+                groups.append(Group(tree.right.id, 'multinuc', tree.id, 'span'))
             elif tree.nuclearity == "NS":
                 groups.append(Group(tree.right.id, 'span', tree.left.id, tree.relation))
             else:
-                groups.append(Group(tree.right.id, 'multinuc', tree.id, tree.relation))
+                groups.append(Group(tree.right.id, 'span', tree.id, tree.relation))
 
             _groups, _edus = self.get_groups_and_edus(tree.right)
             groups += _groups
@@ -156,7 +156,7 @@ class ForestExporter:
         
         for tree in trees:
             result += list(set(self._tree_exporter.compile_relation_set(tree)))
-               
+
         result = [value if value != "elementary__" else "antithesis_NN" for value in result]
         return result
     

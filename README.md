@@ -46,7 +46,8 @@ ppl = PipelineCommon([
 res = ppl("Президент Филиппин заявил, что поедет на дачу, если будут беспорядки.")
 #
 ```   
-4. The `res` variable should contain all annotations including RST annotations stored in `res['rst']`:
+4. The `res` variable should contain all annotations including RST annotations stored in `res['rst']`; each tree anotation in list represents one or more paragraphs of the given text.
+
 ```
 {'text': 'Президент Филиппин заявил, что поедет на дачу, если будут беспорядки.',
  'sentences': [<isanlp.annotation.Sentence at 0x7fc9dde12990>],
@@ -69,12 +70,13 @@ res = ppl("Президент Филиппин заявил, что поедет
 6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
 ```python 
 
-from src.isanlp_rst.utils.export_to_rs3 import ForestExporter  # for list of units (whole document)
-from src.isanlp_rst.utils.export_to_rs3 import Exporter  # for single unit (one tree)
+from src.isanlp_rst.export.to_rs3 import ForestExporter  # for list of units (whole document)
+from src.isanlp_rst.export.to_rs3 import Exporter  # for single unit (one tree)
 
 exporter = ForestExporter(encoding='utf8')
 exporter(res['rst'], 'filename.rs3')
 ```
+It is recommended to open the generated files with [RSTTool](http://www.wagsoft.com/RSTTool/).
 
 ## Package overview  
 1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_rst/processor_rst.py`.
