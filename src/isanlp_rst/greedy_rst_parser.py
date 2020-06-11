@@ -35,7 +35,7 @@ class GreedyRSTParser:
         max_id = self._get_max_id(nodes)
 
         # initialize scores
-        features = self.tree_predictor.initialize_features(nodes, 
+        features = self.tree_predictor.initialize_features(nodes,
                                                            annot_text, annot_tokens,
                                                            annot_sentences,
                                                            annot_lemma, annot_morph, annot_postag,
@@ -43,13 +43,13 @@ class GreedyRSTParser:
 
         scores = self.tree_predictor.predict_pair_proba(features)
 
-        while len(nodes) > 2 and any([score > self.confidence_threshold for score in scores]):
+        while len(scores) > 1 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
 
             # make the new node by merging node[j] + node[j+1]
-            relation = self.tree_predictor.predict_label(features.iloc[j]),
-            relation, nuclearity = relation[0].split('_')
+            relation = self._get_relation(features.iloc[0])
+            relation, nuclearity = relation.split('_')
             temp = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[j],
@@ -100,8 +100,8 @@ class GreedyRSTParser:
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 
-        relation = self.tree_predictor.predict_label(features.iloc[0]),
-        relation, nuclearity = relation[0].split('_')
+        relation = self._get_relation(features.iloc[0])
+        relation, nuclearity = relation.split('_')
         if len(scores) == 1 and scores[0] > self.confidence_threshold:
             root = DiscourseUnit(
                 id=max_id + 1,
@@ -121,5 +121,16 @@ class GreedyRSTParser:
         for du in dus[:-1]:
             if du.id > max_id:
                 max_id = du.id
-                
+
         return max_id
+
+    def _get_relation(self, pair_feature):
+        relation = 'joint_NN'
+
+        try:
+            relation = self.tree_predictor.predict_label(pair_feature)
+        except RuntimeError as e:
+            # Some vector sizes do not fit in the model
+            print(e)
+
+        return relation

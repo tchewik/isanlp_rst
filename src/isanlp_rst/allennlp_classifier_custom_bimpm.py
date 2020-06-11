@@ -2,6 +2,8 @@ import os
 
 from models.customization_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 from models.customization_package.dataset_readers.custom_reader import CustomDataReader
+from isanlp.annotation_rst import DiscourseUnit
+from symbol_map import SYMBOL_MAP
 
 
 class AllenNLPClassifier:
@@ -24,40 +26,7 @@ class AllenNLPClassifier:
         self._cuda_device = cuda_device
         self._max_len = 100
 
-        self._symbol_map = {
-            'x': 'х',
-            'X': 'X',
-            'y': 'у',
-            '—': '-',
-            '“': '«',
-            '‘': '«',
-            '”': '»',
-            '’': '»',
-            '😆': '😄',
-            '😊': '😄',
-            '😑': '😄',
-            '😔': '😄',
-            '😉': '😄',
-            '❗': '😄',
-            '🤔': '😄',
-            '😅': '😄',
-            '⚓': '😄',
-            'ε': 'α',
-            'ζ': 'α',
-            'η': 'α',
-            'μ': 'α',
-            'δ': 'α',
-            'λ': 'α',
-            'ν': 'α',
-            'β': 'α',
-            'γ': 'α',
-            'と': '尋',
-            'の': '尋',
-            '神': '尋',
-            '隠': '尋',
-            'し': '尋',
-        }
-
+        self._symbol_map = SYMBOL_MAP
         self._left_dummy_placement = '-'
         self._right_dummy_placement = '###'
 

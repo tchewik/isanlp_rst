@@ -1,6 +1,7 @@
 import os
 
 from allennlp.predictors import Predictor
+from symbol_map import SYMBOL_MAP
 
 
 class AllenNLPClassifier:
@@ -18,44 +19,11 @@ class AllenNLPClassifier:
         self.model_dir_path = model_dir_path
         self._max_len = 100
 
-        self._symbol_map = {
-            'x': 'х',
-            'X': 'X',
-            'y': 'у',
-            '—': '-',
-            '“': '«',
-            '‘': '«',
-            '”': '»',
-            '’': '»',
-            '😆': '😄',
-            '😊': '😄',
-            '😑': '😄',
-            '😔': '😄',
-            '😉': '😄',
-            '❗': '😄',
-            '🤔': '😄',
-            '😅': '😄',
-            '⚓': '😄',
-            'ε': 'α',
-            'ζ': 'α',
-            'η': 'α',
-            'μ': 'α',
-            'δ': 'α',
-            'λ': 'α',
-            'ν': 'α',
-            'β': 'α',
-            'γ': 'α',
-            'と': '尋',
-            'の': '尋',
-            '神': '尋',
-            '隠': '尋',
-            'し': '尋',
-        }
-
+        self._symbol_map = SYMBOL_MAP
         self._left_dummy_placement = '-'
         self._right_dummy_placement = '###'
 
-        self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'))
+        self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'), 'textual-entailment')
 
     def predict_proba(self, snippet_x, snippet_y):
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
@@ -63,7 +31,7 @@ class AllenNLPClassifier:
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
         return self._model.predict(_snippet_x, _snippet_y)['probs']
@@ -84,7 +52,7 @@ class AllenNLPClassifier:
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return 'other_NN'
 
         return self._model.predict(_snippet_x, _snippet_y)['label']
