@@ -3,14 +3,15 @@ import os
 import numpy as np
 from allennlp.predictors import Predictor
 from isanlp.annotation_rst import DiscourseUnit
-from symbol_map import SYMBOL_MAP
+from .symbol_map import SYMBOL_MAP
 
 
 class AllenNLPSegmenter:
 
-    def __init__(self, model_dir_path):
+    def __init__(self, model_dir_path, cuda_device=-1):
         self._model_path = os.path.join(model_dir_path, 'tony_segmentator', 'model.tar.gz')
-        self.predictor = Predictor.from_path(self._model_path)
+        self._cuda_device = cuda_device
+        self.predictor = Predictor.from_path(self._model_path, cuda_device=self._cuda_device)
         self._separator = 'U-S'
         self._symbol_map = SYMBOL_MAP
 

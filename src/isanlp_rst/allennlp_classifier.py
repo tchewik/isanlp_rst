@@ -1,7 +1,7 @@
 import os
 
 from allennlp.predictors import Predictor
-from symbol_map import SYMBOL_MAP
+from .symbol_map import SYMBOL_MAP
 
 
 class AllenNLPClassifier:

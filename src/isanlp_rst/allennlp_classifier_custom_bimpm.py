@@ -3,7 +3,7 @@ import os
 from models.customization_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 from models.customization_package.dataset_readers.custom_reader import CustomDataReader
 from isanlp.annotation_rst import DiscourseUnit
-from symbol_map import SYMBOL_MAP
+from .symbol_map import SYMBOL_MAP
 
 
 class AllenNLPClassifier:

@@ -22,7 +22,7 @@ _FEATURE_PROCESSOR = {
 }
 
 _SPAN_PREDICTOR = {
-    'lstm': (LargeAllenNLPClassifier, 'structure_predictor_lstm', 0.1, 0.5),
+    'lstm': (LargeAllenNLPClassifier, 'structure_predictor_lstm', 0.0, 0.5),
     'ensemble': (SklearnClassifier, 'structure_predictor', 0.15, 0.2),
 }
 
@@ -119,7 +119,8 @@ class ProcessorRST:
                         "\nДвугорбый верблюд мало где",
                         "\nМонгол Шуудан переводится",
                         "\nОвощные буузы.",
-                        "\nЗнаменитый чай!"
+                        "\nЗнаменитый чай!",
+                        "\nменя приняли кандидатом",
                         ):
             annot_text = annot_text.replace(missegmentation, ' '+missegmentation[1:])
 
