@@ -48,7 +48,7 @@ class GreedyRSTParser:
             j = to_merge(scores)  # position of the pair in list
 
             # make the new node by merging node[j] + node[j+1]
-            relation = self._get_relation(features.iloc[0])
+            relation = self._get_relation(features.iloc[j])
             relation, nuclearity = relation.split('_')
             temp = DiscourseUnit(
                 id=max_id + 1,
