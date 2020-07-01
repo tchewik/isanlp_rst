@@ -22,6 +22,8 @@ class RSTTreePredictor:
 
         self.genre = None
 
+        self.DEFAULT_RELATION = 'joint_NN'
+
 
 class GoldTreePredictor(RSTTreePredictor):
     """
@@ -93,7 +95,7 @@ class GoldTreePredictor(RSTTreePredictor):
             label = label.values
 
             if label.size == 0:
-                return 'relation_NN'
+                return self.DEFAULT_RELATION
 
             return label[0]
 
@@ -284,17 +286,8 @@ class NNTreePredictor(CustomTreePredictor):
             return [proba[1] for proba in probas]
 
     def predict_label(self, features):
-        _class_mapper = {
-            'background_NS': 'elaboration_NS',
-            'background_SN': 'preparation_SN',
-            'comparison_NN': 'contrast_NN',
-            'interpretation-evaluation_SN': 'elaboration_NS',
-            'evidence_NS': 'elaboration_NS',
-            'restatement_NN': 'joint_NN',
-            'sequence_NN': 'joint_NN'
-        }
 
-        result = 'relation'
+        result = self.DEFAULT_RELATION
 
         if not self.label_predictor:
             return result
@@ -353,7 +346,7 @@ class LargeNNTreePredictor(NNTreePredictor):
 
     def predict_label(self, features):
 
-        result = 'relation'
+        result = self.DEFAULT_RELATION
 
         if not self.label_predictor:
             return result
@@ -365,12 +358,6 @@ class LargeNNTreePredictor(NNTreePredictor):
         if type(features) == pd.Series:
             result = self.label_predictor.predict(features.loc['snippet_x'],
                                                   features.loc['snippet_y'])
-
-        if type(result) == list:
-            result = [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
-
-            if len(result) == 1:
-                result = result[0]
 
         return result
 
@@ -417,7 +404,7 @@ class ContextualNNTreePredictor(NNTreePredictor):
 
     def predict_label(self, features):
 
-        result = 'relation'
+        result = self.DEFAULT_RELATION
 
         if not self.label_predictor:
             return result
@@ -430,10 +417,31 @@ class ContextualNNTreePredictor(NNTreePredictor):
             result = self.label_predictor.predict(features.loc['snippet_x'],
                                                   features.loc['snippet_y'])
 
-        if type(result) == list:
-            result = [_class_mapper.get(value) if _class_mapper.get(value) else value for value in result]
+        return result
 
-            if len(result) == 1:
-                result = result[0]
+
+class EnsembleNNTreePredictor(LargeNNTreePredictor):
+    """
+    Contains trained classifiers and feature processors needed for tree prediction.
+    Instead of pure allennlp classification model, as is in LargeNNTreePredictor,
+      predicts labels from an ensemble of allennlp and sklearn models.
+    """
+
+    def predict_label(self, features):
+
+        result = self.DEFAULT_RELATION
+
+        if not self.label_predictor:
+            return result
+
+        if type(features) == pd.DataFrame:
+            result = self.label_predictor.predict_batch(snippet_x=features['snippet_x'].values.tolist(),
+                                                        snippet_y=features['snippet_y'].values.tolist(),
+                                                        features=features)
+
+        if type(features) == pd.Series:
+            result = self.label_predictor.predict(snippet_x=features.loc['snippet_x'],
+                                                  snippet_y=features.loc['snippet_y'],
+                                                  features=features.to_frame().T)
 
         return result

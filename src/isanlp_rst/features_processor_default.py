@@ -110,6 +110,8 @@ class FeaturesProcessor:
         result = self.annot_text.find(snippet_y, loc_x + len(snippet_x) - 1)
         if result < 1:
             result = self.annot_text.find(snippet_y, loc_x + 1)
+        if result < 1:
+            result = self.annot_text.find(snippet_x) + len(snippet_x)
         return result
 
     def __call__(self, df_, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
@@ -171,6 +173,7 @@ class FeaturesProcessor:
             print(
                 f"Unable to locate first snippet >>> {df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
+            df.snippet_x_locs = df.snippet_x_locs.map(lambda row: row if len(row) > 0 else [-1, -1])
             df = df[df.snippet_x_locs.map(len) > 0]
 
         # print(df[['snippet_x', 'snippet_y', 'token_begin_y', 'token_end_y']])
@@ -215,8 +218,11 @@ class FeaturesProcessor:
                 print(
                     f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
                     file=sys.stderr)
-            df = df[df.snippet_y_locs.map(len) > 0]
-            df2 = df2[df2.snippet_x_locs.map(len) > 0]
+
+                df.snippet_y_locs = df.snippet_y_locs.map(lambda row: row if len(row) > 0 else [-1, -1])
+                df = df[df.snippet_y_locs.map(len) > 0]
+            # df = df[df.snippet_y_locs.map(len) > 0]
+            # df2 = df2[df2.snippet_x_locs.map(len) > 0]
             df = pd.concat([df, df2])
 
         # print(df[['snippet_x', 'snippet_y', 'snippet_y_locs', 'loc_x', 'loc_y']].values)
