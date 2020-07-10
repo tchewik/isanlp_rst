@@ -2,12 +2,11 @@ import pandas as pd
 
 
 text_html_map = {
-    r'\n': r' ',
+#     r'\n': r' ',
     r'<': r' менее ',
     r'&lt;': r' менее ',
     r'>': r' более ',
     r'&gt;': r' более ',
-    r'„': '"',
     r'&amp;': r'&',
     r'&quot;': r'"',
     r'&ndash;': r'–',
@@ -33,6 +32,56 @@ text_html_map = {
     r'companу': r'company',
     r'kasperskу': r'kaspersky',
 }
+
+SYMBOL_MAP = {
+    'x': 'х',
+    'X': 'X',
+    'y': 'у',
+    '—': '-',
+    '“': '«',
+    '‘': '«',
+    '”': '»',
+    '’': '»',
+    '😆': '😄',
+    '😊': '😄',
+    '😑': '😄',
+    '😔': '😄',
+    '😉': '😄',
+    '❗': '😄',
+    '🤔': '😄',
+    '😅': '😄',
+    '⚓': '😄',
+    'ε': 'α',
+    'ζ': 'α',
+    'η': 'α',
+    'μ': 'α',
+    'δ': 'α',
+    'λ': 'α',
+    'ν': 'α',
+    'β': 'α',
+    'γ': 'α',
+    'と': '尋',
+    'の': '尋',
+    '神': '尋',
+    '隠': '尋',
+    'し': '尋',
+    'è': 'e',
+    'ĕ': 'e',
+    'ç': 'c',
+    'ҫ': 'c',
+    'ё': 'е',
+    'Ё': 'Е',
+    u'ú': 'u',
+    u'Î': 'I',
+    u'Ç': 'C',
+    u'Ҫ': 'C',
+    '£': '$',
+    '₽': '$',
+    'ӑ': 'a',
+    'Ă': 'A',
+}
+
+text_html_map.update(SYMBOL_MAP)
 
 second_map = {
     r'&': r'_',
@@ -75,21 +124,22 @@ def read_annotation(filename):
 
 def read_gold(filename, features=False):
     if features:
-        return pd.read_pickle(filename + '.gold.pkl')
+        df = pd.read_pickle(filename + '.gold.pkl')
     else:   
         df = pd.read_json(filename + '.json')
-        for key in text_html_map.keys():
-            df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
-            df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
-            
-        for key in second_map.keys():
-            df['snippet_x'].replace(key, second_map[key], regex=True, inplace=True)
-            df['snippet_y'].replace(key, second_map[key], regex=True, inplace=True)
-            
-        df = df[df['snippet_x'].map(len) > 0]
-        df = df[df['snippet_y'].map(len) > 0]
+        
+    for key in text_html_map.keys():
+        df['snippet_x'].replace(key, text_html_map[key], regex=True, inplace=True)
+        df['snippet_y'].replace(key, text_html_map[key], regex=True, inplace=True)
 
-        return df
+    for key in second_map.keys():
+        df['snippet_x'].replace(key, second_map[key], regex=True, inplace=True)
+        df['snippet_y'].replace(key, second_map[key], regex=True, inplace=True)
+
+    df = df[df['snippet_x'].map(len) > 0]
+    df = df[df['snippet_y'].map(len) > 0]
+
+    return df
 
 def read_negative(filename, features=False):
     if features:
@@ -157,43 +207,43 @@ def _prepare_text(text):
     text = text.replace(' \n', '#####')
     text = text + '#####'
     text = text.replace('#####', '\n')
-    text_html_map = {
-        '&gt;': r'>',
-        '&lt;': r'<',
-        '&amp;': r'&',
-        '&quot;': r'"',
-        '&ndash;': r'–',
-        '##### ': r'',
-        '\\\\\\\\': r'\\',
-        '<': ' менее ',
-        '&lt;': ' менее ',
-        r'>': r' более ',
-        r'&gt;': r' более ',
-        r'„': '"',
-        r'&amp;': r'&',
-        r'&quot;': r'"',
-        r'&ndash;': r'–',
-        r'&ouml;': r'o',
-        r'&hellip;': r'...',
-        r'&eacute;': r'e',
-        r'&aacute;': r'a',
-        r'&rsquo;': r"'",
-        r'&lsquo;': r"'",
-        ' & ': ' and ',  #
-        '&id=': r'_id=',
-#         '&': '_',
-        '——': r'-',
-        '—': r'-',
-        #'/': r'',
-        '\^': r'',
-        '^': r'',
-        '±': r'+',
-        'y': r'у',
-        'xc': r'хс',
-        'x': r'х',
-         r'companу': r'company',
-         r'kasperskу': r'kaspersky',
-    }
+#     text_html_map = {
+#         '&gt;': r'>',
+#         '&lt;': r'<',
+#         '&amp;': r'&',
+#         '&quot;': r'"',
+#         '&ndash;': r'–',
+#         '##### ': r'',
+#         '\\\\\\\\': r'\\',
+#         '<': ' менее ',
+#         '&lt;': ' менее ',
+#         r'>': r' более ',
+#         r'&gt;': r' более ',
+#         r'„': '"',
+#         r'&amp;': r'&',
+#         r'&quot;': r'"',
+#         r'&ndash;': r'–',
+#         r'&ouml;': r'o',
+#         r'&hellip;': r'...',
+#         r'&eacute;': r'e',
+#         r'&aacute;': r'a',
+#         r'&rsquo;': r"'",
+#         r'&lsquo;': r"'",
+#         ' & ': ' and ',  #
+#         '&id=': r'_id=',
+# #         '&': '_',
+#         '——': r'-',
+#         '—': r'-',
+#         #'/': r'',
+#         '\^': r'',
+#         '^': r'',
+#         '±': r'+',
+#         'y': r'у',
+#         'xc': r'хс',
+#         'x': r'х',
+#          r'companу': r'company',
+#          r'kasperskу': r'kaspersky',
+#     }
     
     for key in text_html_map.keys():
         text = text.replace(key, text_html_map[key])
