@@ -21,9 +21,9 @@ from scipy import spatial
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import paired_cosine_distances
 from sklearn.metrics.pairwise import paired_euclidean_distances
-from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
+from .utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
     count_words_y, pairs_words, relations_related
-from utils.synonyms_vocabulary import synonyms_vocabulary
+from .utils.synonyms_vocabulary import synonyms_vocabulary
 
 warnings.filterwarnings('ignore')
 
@@ -111,14 +111,17 @@ class FeaturesProcessor:
         if result < 1:
             result = self.annot_text.find(snippet_y, loc_x + 1)
         if result < 1:
-            result = self.annot_text.find(snippet_x) + len(snippet_x)
+            result = loc_x + 1
         return result
 
     def __call__(self, df_, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
 
         df = df_[:]
-        self.annot_text = annot_text.replace('\n', ' ')
+        df.snippet_x = df.snippet_x.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
+        df.snippet_y = df.snippet_y.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
+
+        self.annot_text = annot_text.replace('\n', ' ').replace('  ', ' ')
         self.annot_tokens = annot_tokens
         self.annot_sentences = annot_sentences
         self.annot_lemma = annot_lemma
@@ -144,8 +147,7 @@ class FeaturesProcessor:
         df['token_begin_y'] = df.loc_y.map(self.locate_token)
 
         try:
-            df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)) + 1,
-                                         axis=1)  # -1
+            df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)), axis=1)  # -1
             df['token_end_y'] = df['token_end_y'] + (df['token_end_y'] == df['token_begin_y']) * 1
         except:
             if self._verbose == 2:
@@ -173,7 +175,6 @@ class FeaturesProcessor:
             print(
                 f"Unable to locate first snippet >>> {df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
-            df.snippet_x_locs = df.snippet_x_locs.map(lambda row: row if len(row) > 0 else [-1, -1])
             df = df[df.snippet_x_locs.map(len) > 0]
 
         # print(df[['snippet_x', 'snippet_y', 'token_begin_y', 'token_end_y']])
@@ -218,11 +219,8 @@ class FeaturesProcessor:
                 print(
                     f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
                     file=sys.stderr)
-
-                df.snippet_y_locs = df.snippet_y_locs.map(lambda row: row if len(row) > 0 else [-1, -1])
-                df = df[df.snippet_y_locs.map(len) > 0]
-            # df = df[df.snippet_y_locs.map(len) > 0]
-            # df2 = df2[df2.snippet_x_locs.map(len) > 0]
+            df = df[df.snippet_y_locs.map(len) > 0]
+            df2 = df2[df2.snippet_x_locs.map(len) > 0]
             df = pd.concat([df, df2])
 
         # print(df[['snippet_x', 'snippet_y', 'snippet_y_locs', 'loc_x', 'loc_y']].values)
@@ -240,6 +238,10 @@ class FeaturesProcessor:
         df['number_sents_x'] = (df['sentence_begin_y'] - df['sentence_begin_x']) | 1
         df['number_sents_y'] = (df['sentence_end_y'] - df['sentence_begin_y']) | 1
         df['same_sentence'] = (df['sentence_begin_x'] == df['sentence_begin_y']).astype(int)
+        df['same_paragraph'] = df.apply(
+            lambda row: annot_text.find('\n', row.sentence_begin_x, row.sentence_end_y) != -1,
+            axis=1).astype(int)
+        df['same_paragraph'] = df['same_sentence'] | df['same_paragraph']
 
         # find the common syntax root of x and y
         df['common_root'] = df.apply(lambda row: [self.locate_root(row)], axis=1)
@@ -447,6 +449,9 @@ class FeaturesProcessor:
     def token_to_sent_word(self, token):
         for i, sentence in enumerate(self.annot_sentences):
             if sentence.begin <= token < sentence.end:
+                return i, token - sentence.begin
+        for i, sentence in enumerate(self.annot_sentences):
+            if sentence.begin <= token + 1 < sentence.end:
                 return i, token - sentence.begin
         return -1, -1
 
