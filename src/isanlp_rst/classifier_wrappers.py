@@ -352,17 +352,27 @@ class SklearnClassifier:
         self._label_encoder = pickle.load(open(file_label_encoder, 'rb')) if os.path.isfile(
             file_label_encoder) else None
 
-        if self._label_encoder:
-            self.labels = self._label_encoder.classes_
-
         self._model = pickle.load(open(os.path.join(self.model_dir_path, 'model.pkl'), 'rb'))
         self.classes_ = self._model.classes_
+        
+        if self._label_encoder:
+            self.labels = self._label_encoder.classes_
+        else:
+            self.labels = list(map(str, self.classes_))
 
     def predict_proba(self, features, *args, **kwargs):
-        return self._model.predict_proba(self._preprocess_features(features))[0]
+        try:
+            predictions = self._model.predict_proba(self._preprocess_features(features))[0]
+        except AttributeError:
+            predictions = self._model._predict_proba_lr(self._preprocess_features(features))[0]
+        return predictions
 
     def predict_proba_batch(self, features, *args, **kwargs):
-        return self.predict_proba(features, *args, **kwargs)
+        try:
+            predictions = self._model.predict_proba(self._preprocess_features(features))
+        except AttributeError:
+            predictions = self._model._predict_proba_lr(self._preprocess_features(features))
+        return predictions
 
     def predict(self, features, *args, **kwargs):
         if self._label_encoder:
@@ -425,22 +435,22 @@ class EnsembleClassifier:
         self.voting_type = voting_type
         self.vote = np.max if self.voting_type == 'hard' else np.mean
 
-    def predict_proba(self, snippet_x, snippet_y, features):
+    def predict_proba(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
 
         for model in self.models:
-            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features)
+            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
             results.append(dict(zip(model.labels, sample_prediction)))
 
         ensembled_result = {key: self.vote([result[key] for result in results]) for key in self.labels}
 
         return [ensembled_result[key] for key in self.labels]
 
-    def predict_proba_batch(self, snippet_x, snippet_y, features):
+    def predict_proba_batch(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
 
         for model in self.models:
-            model_predictions = model.predict_proba_batch(snippet_x=snippet_x, snippet_y=snippet_y, features=features)
+            model_predictions = model.predict_proba_batch(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
 
             annot_predictions = []
             for sample_prediction in model_predictions:
@@ -450,21 +460,21 @@ class EnsembleClassifier:
 
         ensembled_result = []
 
-        for i in range(len(results[0])):
+        for i in range(len(results[0])):        
             ensembled_result.append(
-                {key: self.vote([result[key] for result in results], axis=1) for key in results[0].keys()})
+                {key: self.vote([result[i][key] for result in results]) for key in self.labels})
 
-        return [ensembled_result[key] for key in self.labels]
+        return [[sample_result[key] for key in self.labels] for sample_result in ensembled_result]
 
-    def predict(self, snippet_x, snippet_y, features):
-        proba = self.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features)
+    def predict(self, snippet_x, snippet_y, features, *args, **kwargs):
+        proba = self.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
 
         return self.labels[np.argmax(proba)]
 
-    def predict_batch(self, snippet_x, snippet_y, features):
+    def predict_batch(self, snippet_x, snippet_y, features, *args, **kwargs):
         result = []
 
-        proba = self.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features)
+        proba = self.predict_proba_batch(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
         for sample in proba:
             result.append(self.labels[np.argmax(sample)])
 
