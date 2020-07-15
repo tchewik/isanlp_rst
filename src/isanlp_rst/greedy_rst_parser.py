@@ -5,13 +5,14 @@ from isanlp.annotation_rst import DiscourseUnit
 
 
 class GreedyRSTParser:
-    def __init__(self, tree_predictor, confidence_threshold=0.05):
+    def __init__(self, tree_predictor, confidence_threshold=0.05, _same_sentence_bonus=0.):
         """
         :param RSTTreePredictor tree_predictor:
         :param float confidence_threshold: minimum relation probability to append the pair into the tree
         """
         self.tree_predictor = tree_predictor
         self.confidence_threshold = confidence_threshold
+        self._same_sentence_bonus=_same_sentence_bonus
 
     def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree, genre=None):
@@ -41,7 +42,7 @@ class GreedyRSTParser:
                                                            annot_lemma, annot_morph, annot_postag,
                                                            annot_syntax_dep_tree)
 
-        scores = self.tree_predictor.predict_pair_proba(features)
+        scores = self.tree_predictor.predict_pair_proba(features, _same_sentence_bonus=self._same_sentence_bonus)
 
         while len(scores) > 1 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
@@ -73,7 +74,7 @@ class GreedyRSTParser:
                                                                  annot_lemma, annot_morph, annot_postag,
                                                                  annot_syntax_dep_tree)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features)
+                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
                 scores = _scores + scores[j + 2:]
                 features = pd.concat([_features, features.iloc[j + 2:]])
 
@@ -84,7 +85,7 @@ class GreedyRSTParser:
                                                                     annot_lemma, annot_morph, annot_postag,
                                                                     annot_syntax_dep_tree)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features)
+                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
                 features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
                 scores = scores[:j - 1] + _scores + scores[j + 2:]
 
@@ -96,7 +97,7 @@ class GreedyRSTParser:
                                                                  annot_lemma, annot_morph, annot_postag,
                                                                  annot_syntax_dep_tree)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features)
+                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 

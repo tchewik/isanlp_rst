@@ -9,7 +9,6 @@ from allennlp.predictors import Predictor
 from models.bimpm_custom_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 from models.bimpm_custom_package.dataset_readers.custom_reader import CustomDataReader
 
-
 from .symbol_map import SYMBOL_MAP
 
 
@@ -58,7 +57,7 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
         return self._model.predict(_snippet_x, _snippet_y)['probs']
@@ -79,7 +78,7 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return 'other_NN'
 
         return self._model.predict(_snippet_x, _snippet_y)['label']
@@ -145,7 +144,7 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
         return self._model.predict(_snippet_x, _snippet_y, same_sentence, same_paragraph)['probs']
@@ -157,7 +156,8 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
              'same_sentence': same_sentence[i],
              'same_paragraph': same_paragraph[i]} if 0 < len(
                 snippet_x[i]) and 0 < len(snippet_y[i]) else
-            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'same_sentence': '0', 'same_paragraph': '0'}
+            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'same_sentence': '0',
+             'same_paragraph': '0'}
             for i in range(len(snippet_x))])
 
         return [prediction['probs'] for prediction in predictions]
@@ -168,7 +168,7 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return 'other_NN'
 
         return self._model.predict(_snippet_x, _snippet_y, same_sentence, same_paragraph)['label']
@@ -181,7 +181,8 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
              'same_paragraph': same_paragraph[i]} if 0 < len(
                 snippet_x[i]) <= self._max_len and 0 < len(
                 snippet_y[i]) <= self._max_len else
-            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'same_sentence': '0', 'same_paragraph': '0'}
+            {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement, 'same_sentence': '0',
+             'same_paragraph': '0'}
             for i in range(len(snippet_x))])
 
         return [prediction['label'] for prediction in predictions]
@@ -238,7 +239,7 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return [1., 0.]
 
         return self._model.predict(_snippet_x, _snippet_y, features,
@@ -268,7 +269,7 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return 'other_NN'
 
         return self._model.predict(_snippet_x, _snippet_y, features,
@@ -354,7 +355,7 @@ class SklearnClassifier:
 
         self._model = pickle.load(open(os.path.join(self.model_dir_path, 'model.pkl'), 'rb'))
         self.classes_ = self._model.classes_
-        
+
         if self._label_encoder:
             self.labels = self._label_encoder.classes_
         else:
@@ -376,12 +377,15 @@ class SklearnClassifier:
 
     def predict(self, features, *args, **kwargs):
         if self._label_encoder:
+            return self._label_encoder.inverse_transform(self._model.predict(self._preprocess_features(features)))[0]
+
+        return self._model.predict(self._preprocess_features(features))[0]
+
+    def predict_batch(self, features, *args, **kwargs):
+        if self._label_encoder:
             return self._label_encoder.inverse_transform(self._model.predict(self._preprocess_features(features)))
 
         return self._model.predict(self._preprocess_features(features))
-
-    def predict_batch(self, features, *args, **kwargs):
-        return self.predict(self, features, *args, **kwargs)
 
     def _preprocess_features(self, _features):
         features = _features[:]
@@ -439,7 +443,8 @@ class EnsembleClassifier:
         results = []
 
         for model in self.models:
-            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
+            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args,
+                                                    **kwargs)
             results.append(dict(zip(model.labels, sample_prediction)))
 
         ensembled_result = {key: self.vote([result[key] for result in results]) for key in self.labels}
@@ -450,7 +455,8 @@ class EnsembleClassifier:
         results = []
 
         for model in self.models:
-            model_predictions = model.predict_proba_batch(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args, **kwargs)
+            model_predictions = model.predict_proba_batch(snippet_x=snippet_x, snippet_y=snippet_y, features=features,
+                                                          *args, **kwargs)
 
             annot_predictions = []
             for sample_prediction in model_predictions:
@@ -460,7 +466,7 @@ class EnsembleClassifier:
 
         ensembled_result = []
 
-        for i in range(len(results[0])):        
+        for i in range(len(results[0])):
             ensembled_result.append(
                 {key: self.vote([result[i][key] for result in results]) for key in self.labels})
 

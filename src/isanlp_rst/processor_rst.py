@@ -68,11 +68,14 @@ class ProcessorRST:
         self._average_tree_length = 400
 
         self.paragraph_parser = GreedyRSTParser(self._tree_predictor,
-                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2])
+                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2],
+                                                _same_sentence_bonus=1.)
         self.document_parser = GreedyRSTParser(self._tree_predictor,
-                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3])
+                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
+                                               _same_sentence_bonus=0.)
         self.additional_document_parser = GreedyRSTParser(self._tree_predictor,
-                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15)
+                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15,
+                                               _same_sentence_bonus=0.)
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
