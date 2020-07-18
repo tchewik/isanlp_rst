@@ -27,6 +27,9 @@ class RSTTreePredictor:
         self._penalty_words = ['новость :', 'культура :', 'привет', 'здравствуйте', 'http']
 
     def _find_penalty_words(self, span, _penalty=0.5):
+        if len(span.split()) > 100:
+            return _penalty
+
         for word in self._penalty_words:
             if word in span.lower():
                 return _penalty

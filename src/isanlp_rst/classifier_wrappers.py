@@ -360,9 +360,14 @@ class SklearnClassifier:
             self.labels = self._label_encoder.classes_
         else:
             self.labels = list(map(str, self.classes_))
+            
+        self.MAX_LEN = 100
 
     def predict_proba(self, features, *args, **kwargs):
         try:
+            if features['snippet_x'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN or features['snippet_y'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN:
+                return 0.0
+                                         
             predictions = self._model.predict_proba(self._preprocess_features(features))[0]
         except AttributeError:
             predictions = self._model._predict_proba_lr(self._preprocess_features(features))[0]
@@ -371,8 +376,14 @@ class SklearnClassifier:
     def predict_proba_batch(self, features, *args, **kwargs):
         try:
             predictions = self._model.predict_proba(self._preprocess_features(features))
+            predictions = [predictions[i] if len(
+                features['snippet_x'].iloc[i].split()) < self.MAX_LEN and len(
+                features['snippet_y'].iloc[i].split()) < self.MAX_LEN else [1.0, 0.0] for i in range(len(predictions))]
         except AttributeError:
             predictions = self._model._predict_proba_lr(self._preprocess_features(features))
+            predictions = [predictions[i] if len(
+                features['snippet_x'].iloc[i].split()) < self.MAX_LEN and len(
+                features['snippet_y'].iloc[i].split()) < self.MAX_LEN else [1.0, 0.0] for i in range(len(predictions))]
         return predictions
 
     def predict(self, features, *args, **kwargs):
@@ -425,7 +436,7 @@ class EnsembleClassifier:
     Wrapper for voting ensemble
     """
 
-    def __init__(self, models, voting_type='soft'):
+    def __init__(self, models, voting_type='soft', weights=[1., 1.]):
         """
         :param models: list of initialized models
         :param voting_type: type of voting {soft|hard}
@@ -437,7 +448,9 @@ class EnsembleClassifier:
         self.labels = models[0].labels
 
         self.voting_type = voting_type
-        self.vote = np.max if self.voting_type == 'hard' else np.mean
+        self.vote = np.max if self.voting_type == 'hard' else np.average
+        
+        self.weights=weights
 
     def predict_proba(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
@@ -447,7 +460,7 @@ class EnsembleClassifier:
                                                     **kwargs)
             results.append(dict(zip(model.labels, sample_prediction)))
 
-        ensembled_result = {key: self.vote([result[key] for result in results]) for key in self.labels}
+        ensembled_result = {key: self.vote([result[key] for result in results], weights=self.weights) for key in self.labels}
 
         return [ensembled_result[key] for key in self.labels]
 
