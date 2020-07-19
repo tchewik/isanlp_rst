@@ -6,8 +6,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y liblzma-dev
 ENV PYENV_ROOT /opt/.pyenv
 RUN curl -L https://raw.githubusercontent.com/yyuu/pyenv-installer/master/bin/pyenv-installer | bash
 ENV PATH /opt/.pyenv/shims:/opt/.pyenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-RUN pyenv install 3.6.4
-RUN pyenv global 3.6.4
+RUN pyenv install 3.7
+RUN pyenv global 3.7
 
 RUN pip install -U pip
 RUN python -m pip install -U cython
@@ -26,7 +26,15 @@ COPY src/isanlp_rst /src/isanlp_rst
 COPY pipeline_object.py /src/isanlp_rst/pipeline_object.py
 COPY models /models
 
-RUN curl -O http://files.deeppavlov.ai/deeppavlov_data/bert/rubert_cased_L-12_H-768_A-12_pt.tar.gz && tar -xzvf rubert_cased_L-12_H-768_A-12_pt.tar.gz
+### Uncomment this section if embedders are not in the current directory
+## fastText embeddings
+#RUN curl -O http://vectors.nlpl.eu/repository/20/195.zip && unzip 195.zip
+## RuBERT
+#RUN curl -O http://files.deeppavlov.ai/deeppavlov_data/bert/rubert_cased_L-12_H-768_A-12_pt.tar.gz && tar -xzvf rubert_cased_L-12_H-768_A-12_pt.tar.gz && rm rubert_cased_L-12_H-768_A-12_pt.tar.gz
+## ELMo
+#RUN curl -O http://files.deeppavlov.ai/embeddings/ft_native_300_ru_wiki_lenta_nltk_word_tokenize/ft_native_300_ru_wiki_lenta_nltk_word_tokenize.vec
+
+## Check RuBERT
 RUN python -c "from allennlp.predictors import Predictor; predictor = Predictor.from_path('models/tony_segmentator/model.tar.gz')"
 
 ENV PYTHONPATH=/src/isanlp_rst/

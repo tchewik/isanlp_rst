@@ -3,10 +3,13 @@ from isanlp import PipelineCommon
 
 
 def create_pipeline(delay_init):
-    pipeline_default = PipelineCommon([(ProcessorRST('/models'),
+    pipeline_default = PipelineCommon([(ProcessorRST(model_dir_path='/models',
+                                                     segmenter_type='lstm',
+                                                     span_predictor_type='baseline',
+                                                     label_predictor_type='baseline'),
                                         ['text', 'tokens', 'sentences', 'lemma', 'morph', 'postag', 'syntax_dep_tree'],
-                                         {0: 'rst'})
-                                        ],
-                                       name='default')
-    
+                                        {0: 'rst'})
+                                       ],
+                                      name='default')
+
     return pipeline_default
