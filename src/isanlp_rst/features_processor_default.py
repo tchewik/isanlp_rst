@@ -21,9 +21,9 @@ from scipy import spatial
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics.pairwise import paired_cosine_distances
 from sklearn.metrics.pairwise import paired_euclidean_distances
-from .utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
+from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
     count_words_y, pairs_words, relations_related
-from .utils.synonyms_vocabulary import synonyms_vocabulary
+from utils.synonyms_vocabulary import synonyms_vocabulary
 
 warnings.filterwarnings('ignore')
 

@@ -1,7 +1,7 @@
 import pandas as pd
 from isanlp.annotation_rst import DiscourseUnit
 
-from .symbol_map import SYMBOL_MAP
+from symbol_map import SYMBOL_MAP
 
 
 class RSTTreePredictor:

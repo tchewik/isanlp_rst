@@ -9,7 +9,7 @@ from allennlp.predictors import Predictor
 from models.bimpm_custom_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 from models.bimpm_custom_package.dataset_readers.custom_reader import CustomDataReader
 
-from .symbol_map import SYMBOL_MAP
+from symbol_map import SYMBOL_MAP
 
 
 ##from models.customization_package2.model.contextual_bimpm_predictor import ContextualBiMpmPredictor
