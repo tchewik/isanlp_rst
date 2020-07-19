@@ -91,7 +91,7 @@ class AllenNLPSegmenter:
 
     def _prepare_token(self, token):
 
-        for key, value in self.symbol_map.items():
+        for key, value in self._symbol_map.items():
             token = token.replace(key, value)
 
         for keyword in ['www', 'http']:

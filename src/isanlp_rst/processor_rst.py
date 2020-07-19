@@ -14,7 +14,7 @@ _SEGMENTER = {
 
 _FEATURE_PROCESSOR = {
     'neural': FeaturesProcessorTokenizer,
-    'ensemble': FeaturesProcessor,
+    'baseline': FeaturesProcessor,
 }
 
 _SPAN_PREDICTOR = {
@@ -25,7 +25,7 @@ _SPAN_PREDICTOR = {
 
 _LABEL_PREDICTOR = {
     'neural': (AllenNLPBiMPMClassifier, 'label_predictor_bimpm'),
-    'baseline': (SklearnClassifier, 'relation_predictor_baseline'),
+    'baseline': (SklearnClassifier, 'label_predictor_baseline'),
     'ensemble': (EnsembleClassifier,)
 }
 
@@ -45,6 +45,7 @@ class ProcessorRST:
         self.segmenter = _SEGMENTER[segmenter_type](self._model_dir_path)
 
         _features_type = sorted([span_predictor_type, label_predictor_type])[0]
+        _features_type = 'baseline' if _features_type == 'ensemble' else _features_type
         self._features_processor = _FEATURE_PROCESSOR[_features_type](self._model_dir_path)
 
         self._span_predictor_sentence = None
