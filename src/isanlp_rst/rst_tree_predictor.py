@@ -24,7 +24,7 @@ class RSTTreePredictor:
 
         self.DEFAULT_RELATION = 'joint_NN'
 
-        self._penalty_words = ['новость :', 'культура :', 'привет', 'здравствуйте', 'http']
+        self._penalty_words = ['новость :', 'культура :', 'http']
 
     def _find_penalty_words(self, span, _penalty=0.5):
         if len(span.split()) > 100:
