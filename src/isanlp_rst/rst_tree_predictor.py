@@ -156,7 +156,7 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
             return features
-        except IndexError:
+        except:
             with open('errors.log', 'w+') as f:
                 f.write(str(pair.values))
                 f.write(annot_text)

@@ -1,9 +1,10 @@
-from isanlp.annotation import Sentence
+import os
 
 from allennlp_segmenter import AllenNLPSegmenter
 from classifier_wrappers import *
 from features_processor_default import *
 from greedy_rst_parser import GreedyRSTParser
+from isanlp.annotation import Sentence
 from model_segmenter import ModelSegmenter  # deprecated
 from rst_tree_predictor import *
 

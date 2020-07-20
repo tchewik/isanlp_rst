@@ -25,8 +25,11 @@ class SimpleAllenNLPClassifier:
         self.labels = open(file_labels, 'r').readlines() if os.path.isfile(
             file_labels) else None
         self.labels = [label.strip() for label in self.labels]
+        self.num_classes = len(self.labels)
+        self._default_proba = [1., ] + [0.] * (self.num_classes - 1)
+        self.DEFAULT_LABEL = 'joint_NN'
 
-        self._max_len = 100
+        self._max_len = 90
         self._symbol_map = SYMBOL_MAP
 
         self._left_dummy_placement = '-'
@@ -52,13 +55,15 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
                                           cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, *args, **kwargs):
+
+
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-            _snippet_y.split()) > self._max_len:
-            return [1., 0.]
+                _snippet_y.split()) > self._max_len:
+            return self._default_proba
 
         return self._model.predict(_snippet_x, _snippet_y)['probs']
 
@@ -79,7 +84,7 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
             _snippet_y.split()) > self._max_len:
-            return 'other_NN'
+            return self.DEFAULT_LABEL
 
         return self._model.predict(_snippet_x, _snippet_y)['label']
 
@@ -139,13 +144,14 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
                                                      cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, same_sentence, same_paragraph, *args, **kwargs):
+
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
             _snippet_y.split()) > self._max_len:
-            return [1., 0.]
+            return self._default_proba
 
         return self._model.predict(_snippet_x, _snippet_y, same_sentence, same_paragraph)['probs']
 
@@ -169,7 +175,7 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
             _snippet_y.split()) > self._max_len:
-            return 'other_NN'
+            return self.DEFAULT_LABEL
 
         return self._model.predict(_snippet_x, _snippet_y, same_sentence, same_paragraph)['label']
 
@@ -232,6 +238,9 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
                                                          cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, features, left_context, right_context, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return self._default_proba
+
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=False)
         _left_context = self._prepare_sequence(left_context, is_left_snippet=True)
@@ -240,13 +249,16 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
             _snippet_y.split()) > self._max_len:
-            return [1., 0.]
+            return self._default_proba
 
         return self._model.predict(_snippet_x, _snippet_y, features,
                                    left_context=_left_context,
                                    right_context=_right_context)['probs']
 
     def predict_proba_batch(self, snippet_x, snippet_y, features, left_context, right_context, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return [self._default_proba for _ in range(len(snippet_x))]
+
         predictions = self._model.predict_batch_json([
             {'premise': self._prepare_sequence(snippet_x[i], is_left_snippet=True),
              'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False),
@@ -262,6 +274,9 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
         return [prediction['probs'] for prediction in predictions]
 
     def predict(self, snippet_x, snippet_y, features, left_context, right_context, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return self.DEFAULT_LABEL
+
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
         _left_context = self._prepare_sequence(left_context[i], is_left_snippet=True)
@@ -270,13 +285,16 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
             _snippet_y.split()) > self._max_len:
-            return 'other_NN'
+            return self.DEFAULT_LABEL
 
         return self._model.predict(_snippet_x, _snippet_y, features,
                                    left_context=_left_context,
                                    right_context=_right_context)['label']
 
     def predict_batch(self, snippet_x, snippet_y, features, left_context, right_context, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return [self.DEFAULT_LABEL for _ in range(len(snippet_x))]
+
         predictions = self._model.predict_batch_json([
             {'premise': self._prepare_sequence(snippet_x[i], is_left_snippet=True),
              'hypothesis': self._prepare_sequence(snippet_y[i], is_left_snippet=False),
@@ -358,6 +376,8 @@ class SklearnClassifier:
         self.num_classes = len(self.classes_)
         self._default_proba = [1., ] + [0.] * (self.num_classes - 1)
 
+        self.DEFAULT_LABEL = 'joint_NN'
+
         if self._label_encoder:
             self.labels = self._label_encoder.classes_
         else:
@@ -366,6 +386,9 @@ class SklearnClassifier:
         self.MAX_LEN = 100
 
     def predict_proba(self, features, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return self._default_proba
+
         try:
             if features['snippet_x'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN or \
                     features['snippet_y'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN:
@@ -379,6 +402,9 @@ class SklearnClassifier:
         return predictions
 
     def predict_proba_batch(self, features, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return [self._default_proba for _ in range(len(features))]
+
         try:
             predictions = self._model.predict_proba(self._preprocess_features(features))
             predictions = [predictions[i] if len(
@@ -394,12 +420,18 @@ class SklearnClassifier:
         return predictions
 
     def predict(self, features, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return self.DEFAULT_LABEL
+
         if self._label_encoder:
             return self._label_encoder.inverse_transform(self._model.predict(self._preprocess_features(features)))[0]
 
         return self._model.predict(self._preprocess_features(features))[0]
 
     def predict_batch(self, features, *args, **kwargs):
+        if type(features) == int and features == -1:
+            return [self.DEFAULT_LABEL for _ in range(len(features))]
+
         if self._label_encoder:
             return self._label_encoder.inverse_transform(self._model.predict(self._preprocess_features(features)))
 
