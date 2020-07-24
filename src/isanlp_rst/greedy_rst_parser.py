@@ -12,7 +12,7 @@ class GreedyRSTParser:
         """
         self.tree_predictor = tree_predictor
         self.confidence_threshold = confidence_threshold
-        self._same_sentence_bonus=_same_sentence_bonus
+        self._same_sentence_bonus = _same_sentence_bonus
 
     def __call__(self, edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree, genre=None):
@@ -42,7 +42,7 @@ class GreedyRSTParser:
                                                            annot_lemma, annot_morph, annot_postag,
                                                            annot_syntax_dep_tree)
 
-        scores = self.tree_predictor.predict_pair_proba(features, _same_sentence_bonus=self._same_sentence_bonus)
+        scores = self._get_proba(features)
 
         while len(scores) > 1 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
@@ -77,7 +77,7 @@ class GreedyRSTParser:
                 print('features (line 76):')
                 print(_features.values)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
+                _scores = self._get_proba(_features)
                 scores = _scores + scores[j + 2:]
                 features = pd.concat([_features, features.iloc[j + 2:]])
 
@@ -91,7 +91,7 @@ class GreedyRSTParser:
                 print('features (line 89):')
                 print(_features.values)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
+                _scores = self._get_proba(_features)
                 features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
                 scores = scores[:j - 1] + _scores + scores[j + 2:]
 
@@ -105,9 +105,11 @@ class GreedyRSTParser:
                 print('features (line 103):')
                 print(_features.values)
 
-                _scores = self.tree_predictor.predict_pair_proba(_features, _same_sentence_bonus=self._same_sentence_bonus)
+                _scores = self._get_proba(_features)
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
+
+        print('trees are constructed, define root...')
 
         relation = self._get_relation(features.iloc[0])
         relation, nuclearity = relation.split('_')
@@ -143,3 +145,14 @@ class GreedyRSTParser:
             print(e)
 
         return relation
+
+    def _get_proba(self, pair_feature):
+        proba = 0.0
+
+        try:
+            proba = self.tree_predictor.predict_pair_proba(pair_feature, _same_sentence_bonus=self._same_sentence_bonus)
+        except RuntimeError as e:
+            # Some vectors sizes do not fit in the model
+            print(e)
+
+        return proba
