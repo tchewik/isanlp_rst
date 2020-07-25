@@ -61,7 +61,7 @@ res = ppl('Новости о грядущей эмиссии в США обва�
 ```
 
 5. The variable `res['rst']` can be visualized as:  
-<img src="usage/example.rs3.png" width="700">
+<img src="examples/example.rs3.png" width="700">
 
 6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
 ```python 
