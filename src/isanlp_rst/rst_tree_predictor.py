@@ -33,6 +33,10 @@ class RSTTreePredictor:
         for word in self._penalty_words:
             if word in span.lower():
                 return _penalty
+            
+        for word in ['.', '?', '!']:
+            return _penalty / 2.
+            
         return 0
 
 

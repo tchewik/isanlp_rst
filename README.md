@@ -43,29 +43,25 @@ ppl = PipelineCommon([
      ['text', 'tokens', 'sentences', 'postag', 'morph', 'lemma', 'syntax_dep_tree'],
      {'rst': 'rst'})
 ])
-res = ppl("Президент Филиппин заявил, что поедет на дачу, если будут беспорядки.")
+res = ppl('Новости о грядущей эмиссии в США обвалили доллар и подняли цену доллара. При этом рост количества долларов пока не зафиксирован. Со швейцарским франком ситуация противоположная. Стало известно , что в феврале денежная масса Швейцарии увеличилась на 3.5%, однако биржевой курс франка и его покупательная способность за неделю выросли.')
 #
 ```   
 4. The `res` variable should contain all annotations including RST annotations stored in `res['rst']`; each tree anotation in list represents one or more paragraphs of the given text.
 
 ```
-{'text': 'Президент Филиппин заявил, что поедет на дачу, если будут беспорядки.',
- 'sentences': [<isanlp.annotation.Sentence at 0x7fc9dde12990>],
- 'tokens': [<isanlp.annotation.Token at 0x7fc9dde12950>, ...],
- 'lemma': [['президент', ...]],
- 'syntax_dep_tree': [[<isanlp.annotation.WordSynt at 0x7fc9dddb7b10>, ...]],
- 'ud_postag': [['NOUN', 'PROPN', ...]],
- 'postag': [['NOUN', 'NOUN', ...]],
- 'morph': [[{'fPOS': 'NOUN',
-    'Gender': 'Masc',
-    'Animacy': 'Anim',
-    'Case': 'Nom',
-    'Number': 'Sing'},
-   ...]],
- 'rst': [<isanlp.annotation_rst.DiscourseUnit at 0x7fc9dddcbd90>]}
-```  
+{'text': 'Новости о грядущей эмиссии ...',
+ 'sentences': [<isanlp.annotation.Sentence at 0x7f833dee07d0>, ...],
+ 'tokens': [<isanlp.annotation.Token at 0x7f833dee0910>, ...],
+ 'lemma': [['новость', ...], ...],
+ 'syntax_dep_tree': [[<isanlp.annotation.WordSynt at 0x7f833deddc10>, ...], ...],
+ 'ud_postag': [['NOUN', ...], ...],
+ 'postag': [['NOUN', ...], ...],
+ 'morph': [[{'fPOS': 'NOUN', 'Gender': 'Fem', ...}, ...], ...],
+ 'rst': [<isanlp.annotation_rst.DiscourseUnit at 0x7f833defa5d0>]}
+```
+
 5. The variable `res['rst']` can be visualized as:  
-<img src="example_tree.png" width="350">
+<img src="usage/example.rs3.png" width="700">
 
 6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
 ```python 

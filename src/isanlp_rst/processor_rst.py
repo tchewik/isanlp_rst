@@ -99,7 +99,7 @@ class ProcessorRST:
 
         self.paragraph_parser = GreedyRSTParser(self._tree_predictor,
                                                 confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2],
-                                                _same_sentence_bonus=1.)
+                                                _same_sentence_bonus=2.)
         self.document_parser = GreedyRSTParser(self._tree_predictor,
                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
                                                _same_sentence_bonus=0.)
