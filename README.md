@@ -1,4 +1,4 @@
-![Python 3.6](https://img.shields.io/badge/python-3.7-green.svg)
+![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg)
 
 # IsaNLP RST Parser
 This Python 3 library provides RST parser for Russian based on neural network models trained on [RuRSTreebank](https://rstreebank.ru/) Russian discourse corpus. The parser should be used in conjunction with [IsaNLP library](https://github.com/IINemo/isanlp) and can be considered its module.  
@@ -46,7 +46,7 @@ ppl = PipelineCommon([
 
 text = (
 "Новости о грядущей эмиссии в США обвалили доллар и подняли цену золота. При этом рост количества "
-"долларов пока не зафиксирован. Со швейцарским франком ситуация противоположная. Стало известно, ч"
+"долларов пока не зафиксирован. Со швейцарским франком ситуация противоположная: стало известно, ч"
 "то в феврале денежная масса Швейцарии увеличилась на 3.5%, однако биржевой курс франка и его покуп"
 "ательная способность за неделю выросли."
 )
