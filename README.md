@@ -72,11 +72,17 @@ res = ppl(text)
 <img src="examples/example.rs3.png" width="700">
 
 6. To convert DiscourseUnit objects to .rs3 file with visualization, run:
-```python 
 
-from src.isanlp_rst.export.to_rs3 import ForestExporter  # for list of units (whole document)
-from src.isanlp_rst.export.to_rs3 import Exporter  # for single unit (one tree)
+```python
 
+res['rst'][0].to_rs3('first_tree_filename.rs3')
+```
+
+7. To convert all DiscourseUnits in a document as a single .rs3 file with multiple trees, run:
+
+```python
+
+from isanlp.annotation_rst import ForestExporter
 exporter = ForestExporter(encoding='utf8')
 exporter(res['rst'], 'filename.rs3')
 ```
