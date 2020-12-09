@@ -8,7 +8,7 @@ This Python 3 library provides RST parser for Russian based on neural network mo
 1. Install IsaNLP and its dependencies:
 ```
 pip install grpcio
-pip install git+https://github.com/IINemo/isanlp.git@discourse
+pip install git+https://github.com/IINemo/isanlp.git
 ```  
 
 2. Deploy docker containers for syntax and discourse parsing:  
@@ -86,7 +86,7 @@ from isanlp.annotation_rst import ForestExporter
 exporter = ForestExporter(encoding='utf8')
 exporter(res['rst'], 'filename.rs3')
 ```
-It is recommended to open the generated files with [RSTTool](http://www.wagsoft.com/RSTTool/).
+It is recommended to open the generated .rs3 files with [RSTTool](http://www.wagsoft.com/RSTTool/).
 
 ## Package overview  
 1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_rst/processor_rst.py`.
