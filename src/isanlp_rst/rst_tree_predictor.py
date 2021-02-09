@@ -88,14 +88,14 @@ class GoldTreePredictor(RSTTreePredictor):
             proba = float(((self.corpus.snippet_x == left_snippet) & (self.corpus.snippet_y == right_snippet)).sum(
                 axis=0) != 0)
 
-            if not proba:
-                proba = self.corpus[self.corpus.snippet_x == left_snippet + ' ' + right_snippet].shape[0]
-            if not proba:
-                proba = self.corpus[self.corpus.snippet_x == left_snippet + '' + right_snippet].shape[0]
-            if not proba:
-                proba = self.corpus[self.corpus.snippet_y == left_snippet + ' ' + right_snippet].shape[0]
-            if not proba:
-                proba = self.corpus[self.corpus.snippet_y == left_snippet + '' + right_snippet].shape[0]
+#             if not proba:
+#                 proba = self.corpus[
+#                     self.corpus.snippet_x.str.startswith(left_snippet) & self.corpus.snippet_x.str.endswith(right_snippet)
+#                 ].shape[0]
+#             if not proba:
+#                 proba = self.corpus[
+#                     self.corpus.snippet_y.str.startswith(left_snippet) & self.corpus.snippet_y.str.endswith(right_snippet)
+#                 ].shape[0]
 
             return min(1., proba)
 

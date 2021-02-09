@@ -6,6 +6,7 @@ import pandas as pd
 from allennlp.predictors import Predictor
 # from models.customization_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 # from models.customization_package.dataset_readers.custom_reader import CustomDataReader
+from models.bimpm_custom_package.model.esim import CustomESIM
 from models.bimpm_custom_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
 from models.bimpm_custom_package.dataset_readers.custom_reader import CustomDataReader
 
@@ -56,7 +57,6 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
 
     def predict_proba(self, snippet_x, snippet_y, *args, **kwargs):
 
-
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
         _snippet_y = self._prepare_sequence(snippet_y, is_left_snippet=True)
 
@@ -65,7 +65,11 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
                 _snippet_y.split()) > self._max_len:
             return self._default_proba
 
-        return self._model.predict(_snippet_x, _snippet_y)['probs']
+        prediction = self._model.predict(_snippet_x, _snippet_y)
+        
+        for probs_name in ('probs', 'label_probs'):
+            if prediction.get(probs_name):
+                return prediction.get(probs_name)
 
     def predict_proba_batch(self, snippet_x, snippet_y, *args, **kwargs):
         predictions = self._model.predict_batch_json([

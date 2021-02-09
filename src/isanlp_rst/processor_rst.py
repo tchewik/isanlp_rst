@@ -25,7 +25,8 @@ _SPAN_PREDICTOR = {
 }
 
 _LABEL_PREDICTOR = {
-    'neural': (AllenNLPBiMPMClassifier, 'label_predictor_bimpm'),
+    'bimpm': (AllenNLPBiMPMClassifier, 'label_predictor_bimpm'),
+    'esim': (AllenNLPBiMPMClassifier, 'label_predictor_esim'),
     'baseline': (SklearnClassifier, 'label_predictor_baseline'),
     'ensemble': (EnsembleClassifier,)
 }
@@ -74,7 +75,7 @@ class ProcessorRST:
         else:
             _label_classifiers = []
 
-            for _type in ('baseline', 'neural'):
+            for _type in ('baseline', 'esim'):
                 _label_classifiers.append(
                     _LABEL_PREDICTOR[_type][0](
                         model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[_type][1])
