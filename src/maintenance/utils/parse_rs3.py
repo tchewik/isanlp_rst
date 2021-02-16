@@ -15,9 +15,6 @@ import copy
 from file_reading import prepare_text, text_html_map
 
 
-OUT_PATH = 'data'
-
-
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -463,22 +460,28 @@ parser.add_argument('path', nargs='+', help='Path of a file or a folder of files
 parser.add_argument("-r", "--root", action="store", dest="root", default="",
                     help="optional: path to corpus root folder containing a directory dep/ and \n" +\
                     "a directory xml/ containing additional corpus formats")
+parser.add_argument("-O", "--output", action="store", dest="output", default="data",
+                    help="output path")
+
 
 options = parser.parse_args()
+OUT_PATH = os.path.join(os.getcwd(), options.output)
 full_paths = [os.path.join(os.getcwd(), path) for path in options.path]
 files = set()
 for path in full_paths:
     if os.path.isfile(path):
         files.add(path)
     else:
-        files |= set(glob.glob(path + '/*' + '.rs3'))
+        files |= set(glob.glob(path + '/*' + '.rst'))
 
 for rstfile in files:
     print('>>> read file', rstfile)
     
     out_file = rstfile.split('/')[-1]
-    if out_file.endswith("rs3"):
-        out_file = out_file.replace("rs3", "json")
+    if out_file.endswith("rs3.rst"):
+        out_file = out_file.replace("rs3.rst", "json")
+    elif out_file.endswith(".rst"):
+        out_file = out_file.replace(".rst", ".json")
     else:
         out_file = out_file + ".pkl"
         
@@ -660,10 +663,13 @@ for rstfile in files:
         out_graph.sort(key=lambda x: int(x.id))
 
         def get_node(id):
-            return [i for i, x in enumerate(out_graph) if x.id == id][0]
+            result = [i for i, x in enumerate(out_graph) if x.id == id]
+            if result:
+                return result[0]
+            return None
 
         for joint_tree in joint_trees:
-            nid = [get_node(id) for id in joint_tree]
+            nid = [get_node(id) for id in joint_tree if node]
             #print(nid)
 
             # news_44/108-115
@@ -693,8 +699,12 @@ for rstfile in files:
         filename = '.'.join(out_file.split('/')[-1].split('.')[:-1])
         textfile = '/'.join(rstfile.split('/')[:-1]).replace('rs3', 'txt') + '/' + filename + '.txt'
 
-        with open(textfile, 'r') as f:
-            text = prepare_text(f.read())
+        try:
+            with open(textfile, 'r') as f:
+                text = prepare_text(f.read())
+        except:
+            with open(out_file.replace("json", "edus"), 'r') as f:
+                text = ' '.join(f.readlines())
         
         df = pd.DataFrame(data, columns=['id', 'snippet', 'dep_parent', 'dep_rel', 'kind']).set_index('id')
         new_df = get_pairs(df, text)
