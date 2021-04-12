@@ -130,3 +130,25 @@ The result for `'Президент Филиппин заявил, что пое
 [['Президент Филиппин заявил,', 'что поедет на дачу, если будут беспорядки.', 'attribution', 'SN'], 
  ['что поедет на дачу,', 'если будут беспорядки.', 'condition', 'NS']]
 ```  
+
+# Cite 
+
+https://link.springer.com/chapter/10.1007/978-3-030-72610-2_8  
+
+* Gost:
+Chistova E., Shelmanov A., Pisarevskaya D., Kobozeva M. and Isakov V., Panchenko A., Toldova S. and Smirnov I. RST Discourse Parser for Russian: An Experimental Study of Deep Learning Models // Proceedings of Analysis of Images, Social Networks and Texts (AIST). — 2020. — P. 105-119.
+
+* BibTeX:
+```
+@inproceedings{chistova2020rst,
+  title={{RST} Discourse Parser for {R}ussian: An Experimental Study of Deep Learning Models},
+  author={Chistova, Elena and Shelmanov, Artem and Pisarevskaya, Dina and Kobozeva, Maria and Isakov, Vadim  and Panchenko, Alexander  and Toldova, Svetlana  and Smirnov, Ivan },
+  booktitle={In Proceedings of Analysis of Images, Social Networks and Texts (AIST)},
+  pages={105--119},
+  year={2020}
+}
+```
+
+
+* Springer:
+Chistova E. et al. (2021) RST Discourse Parser for Russian: An Experimental Study of Deep Learning Models. In: van der Aalst W.M.P. et al. (eds) Analysis of Images, Social Networks and Texts. AIST 2020. Lecture Notes in Computer Science, vol 12602. Springer, Cham. https://doi.org/10.1007/978-3-030-72610-2_8  
