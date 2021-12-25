@@ -27,6 +27,11 @@ from utils.synonyms_vocabulary import synonyms_vocabulary
 
 warnings.filterwarnings('ignore')
 
+import razdel
+
+def tokenize(text):
+    result = ' '.join([tok.text for tok in razdel.tokenize(text)])
+    return result
 
 class FeaturesProcessor:
     CATEGORY = 'category_id'
@@ -119,9 +124,12 @@ class FeaturesProcessor:
 
         df = df_[:]
         df.snippet_x = df.snippet_x.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
+        df.snippet_x = df.snippet_x.map(tokenize)
         df.snippet_y = df.snippet_y.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
+        df.snippet_y = df.snippet_y.map(tokenize)
 
         self.annot_text = annot_text.replace('\n', ' ').replace('  ', ' ')
+        self.annot_text = tokenize(annot_text)
         self.annot_tokens = annot_tokens
         self.annot_sentences = annot_sentences
         self.annot_lemma = annot_lemma

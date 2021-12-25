@@ -1,13 +1,14 @@
 FROM inemo/isanlp_base_cuda
 
 RUN apt-get update
+RUN apt-get install libffi-dev
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y liblzma-dev
 
 ENV PYENV_ROOT /opt/.pyenv
 RUN curl -L https://raw.githubusercontent.com/yyuu/pyenv-installer/master/bin/pyenv-installer | bash
 ENV PATH /opt/.pyenv/shims:/opt/.pyenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
-RUN pyenv install 3.6.4
-RUN pyenv global 3.6.4
+RUN pyenv install 3.7.4
+RUN pyenv global 3.7.4
 
 RUN pip install -U pip
 RUN python -m pip install -U cython
@@ -19,11 +20,12 @@ RUN pip install setuptools==41.0.1 scipy scikit-learn==0.22.1 gensim==3.6.0 smar
 
 RUN pip install torch==1.7.1+cpu torchvision==0.8.2+cpu torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
 
-RUN pip install allennlp==0.9.0
+RUN pip install allennlp==2.7.0 allennlp-models==2.7.0
 RUN pip install -U git+https://github.com/IINemo/isanlp.git
 
-RUN python -c "import nltk; nltk.download('stopwords')"
+RUN python -c "import nltk; nltk.download('stopwords'); nltk.download('omw-1.4')"
 
+COPY src/isanlp_rst/td_rst_parser/src /src
 COPY src/isanlp_rst /src/isanlp_rst
 COPY pipeline_object.py /src/isanlp_rst/pipeline_object.py
 
@@ -36,6 +38,7 @@ COPY models/structure_predictor_baseline models/structure_predictor_baseline
 COPY models/structure_predictor_bimpm models/structure_predictor_bimpm
 COPY models/label_predictor_baseline models/label_predictor_baseline
 COPY models/label_predictor_esim models/label_predictor_esim
+COPY models/topdown_model models/topdown_model
 
 ### Uncomment this section if embedders are not in the current directory
 ## ELMo

@@ -1,9 +1,8 @@
-import os
-
 from allennlp_segmenter import AllenNLPSegmenter
 from classifier_wrappers import *
 from features_processor_default import *
 from greedy_rst_parser import GreedyRSTParser
+from topdown_rst_parser import TopDownRSTParser
 from isanlp.annotation import Sentence
 from model_segmenter import ModelSegmenter  # deprecated
 from rst_tree_predictor import *
@@ -89,6 +88,7 @@ class ProcessorRST:
         self._nuclearity_predictor = None
         _span_typename = span_predictor_type if span_predictor_type != 'baseline' else 'ensemble'
         _label_typename = label_predictor_type if label_predictor_type != 'baseline' else 'ensemble'
+
         self._tree_predictor = _TREE_PREDICTOR['_'.join([_span_typename, _label_typename])](
             features_processor=self._features_processor,
             relation_predictor_sentence=self._span_predictor_sentence,
@@ -98,9 +98,7 @@ class ProcessorRST:
 
         self.AVG_TREE_LENGTH = 400
 
-        self.paragraph_parser = GreedyRSTParser(self._tree_predictor,
-                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][2],
-                                                _same_sentence_bonus=2.)
+        self.paragraph_parser = TopDownRSTParser(self._tree_predictor, trained_model_path='models/topdown_model/model.pt')
         self.document_parser = GreedyRSTParser(self._tree_predictor,
                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
                                                _same_sentence_bonus=0.)

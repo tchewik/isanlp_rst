@@ -52,7 +52,6 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
         SimpleAllenNLPClassifier.__init__(self, model_dir_path, cuda_device)
 
         self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'),
-                                          predictor_name='textual-entailment',
                                           cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, *args, **kwargs):
@@ -66,7 +65,7 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
             return self._default_proba
 
         prediction = self._model.predict(_snippet_x, _snippet_y)
-        
+
         for probs_name in ('probs', 'label_probs'):
             if prediction.get(probs_name):
                 return prediction.get(probs_name)
@@ -79,7 +78,11 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
             {'premise': self._left_dummy_placement, 'hypothesis': self._right_dummy_placement}
             for i in range(len(snippet_x))])
 
-        return [prediction['probs'] for prediction in predictions]
+        if predictions:
+            if 'probs' in predictions[0]:
+                return [prediction['probs'] for prediction in predictions]
+            elif 'label_probs' in predictions[0]:
+                return [prediction['label_probs'] for prediction in predictions]
 
     def predict(self, snippet_x, snippet_y, *args, **kwargs):
         _snippet_x = self._prepare_sequence(snippet_x, is_left_snippet=True)
