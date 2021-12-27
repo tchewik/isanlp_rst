@@ -89,25 +89,32 @@ class TopDownRSTParser:
             right_node = DiscourseUnit(id=1, text=' '.join(
                 [tok.text for tok in annot_tokens[node.right_id1: node.right_id2 + 1]]))
 
-            pair_feature = self.tree_predictor.extract_features(left_node, right_node,
-                                                                annot_text, annot_tokens,
-                                                                annot_sentences,
-                                                                annot_lemma, annot_morph, annot_postag,
-                                                                annot_syntax_dep_tree)
-            relation = self._get_relation(pair_feature)
-            relation, nuclearity = relation.split('_')
+            try:
+                pair_feature = self.tree_predictor.extract_features(left_node, right_node,
+                                                                    annot_text, annot_tokens,
+                                                                    annot_sentences,
+                                                                    annot_lemma, annot_morph, annot_postag,
+                                                                    annot_syntax_dep_tree)
+                relation = self._get_relation(pair_feature)
+                relation, nuclearity = relation.split('_')
 
-            left_nuclearity = 'Satellite' if nuclearity == 'SN' else 'Nucleus'
-            right_nuclearity = 'Satellite' if nuclearity == 'NS' else 'Nucleus'
+                left_nuclearity = 'Satellite' if nuclearity == 'SN' else 'Nucleus'
+                right_nuclearity = 'Satellite' if nuclearity == 'NS' else 'Nucleus'
 
-            left_relation = relation
-            right_relation = relation
+                left_relation = relation
+                right_relation = relation
 
-            if left_nuclearity == 'Satellite':
-                right_relation = 'span'
+                if left_nuclearity == 'Satellite':
+                    right_relation = 'span'
 
-            if right_nuclearity == 'Satellite':
-                left_relation = 'span'
+                if right_nuclearity == 'Satellite':
+                    left_relation = 'span'
+            except:
+                print('Unknown error occured.')
+                left_relation = node.left_rel
+                left_nuclearity = node.left_nuc
+                right_relation = node.right_rel
+                right_nuclearity = node.right_nuc
 
             result.append(Node(left_id1=node.left_id1,
                                left_nuc=left_nuclearity,

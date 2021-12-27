@@ -48,6 +48,8 @@ class GreedyRSTParser:
         while len(scores) > 1 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
+            if j + 1 >= len(nodes):
+                return nodes
 
             # make the new node by merging node[j] + node[j+1]
             relation = self._get_relation(features.iloc[j])
@@ -90,7 +92,7 @@ class GreedyRSTParser:
                 features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
                 scores = scores[:j - 1] + _scores + scores[j + 2:]
 
-        else:
+            else:
                 _features = self.tree_predictor.extract_features(nodes[j - 1], nodes[j],
                                                                  annot_text, annot_tokens,
                                                                  annot_sentences,
