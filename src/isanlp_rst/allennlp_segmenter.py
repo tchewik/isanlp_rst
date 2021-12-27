@@ -4,6 +4,8 @@ import numpy as np
 from allennlp.predictors import Predictor
 from isanlp.annotation_rst import DiscourseUnit
 from symbol_map import SYMBOL_MAP
+from allennlp.data.tokenizers.whitespace_tokenizer import WhitespaceTokenizer
+import torch
 
 
 class AllenNLPSegmenter:
@@ -12,7 +14,10 @@ class AllenNLPSegmenter:
         self._model_path = os.path.join(model_dir_path, 'segmenter_neural', 'model.tar.gz')
         self._cuda_device = cuda_device
         self.predictor = Predictor.from_path(self._model_path, cuda_device=self._cuda_device)
+        self.predictor._tokenizer = WhitespaceTokenizer()
         self._separator = 'U-S'
+        self._threshold = 0.5
+        self._use_logits = False
         self._symbol_map = SYMBOL_MAP
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag, annot_synt_dep_tree,
@@ -33,7 +38,12 @@ class AllenNLPSegmenter:
         predictions = self.predictor.predict_batch_json([{'sentence': sentence} for sentence in _sentences])
         result = []
         for i, prediction in enumerate(predictions):
-            pred = np.array(prediction['tags'][:sentences[i].end - sentences[i].begin]) == self._separator
+            if self._use_logits:
+                logits = torch.tensor(prediction['logits'])
+                prediction['proba'] = torch.nn.functional.softmax(logits, dim=1).tolist()
+                pred = np.array(prediction['proba'][:sentences[i].end - sentences[i].begin])[:, 1] > self._threshold
+            else:
+                pred = np.array(prediction['tags'][:sentences[i].end - sentences[i].begin]) == self._separator
 
             # The first token in a sentence is a separator
             # if it is not a point in a list

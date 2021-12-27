@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import sys
 
 from isanlp.annotation_rst import DiscourseUnit
 
@@ -89,20 +90,20 @@ class GreedyRSTParser:
                 features = pd.concat([features.iloc[:j - 1], _features, features.iloc[j + 2:]])
                 scores = scores[:j - 1] + _scores + scores[j + 2:]
 
-            else:
+        else:
                 _features = self.tree_predictor.extract_features(nodes[j - 1], nodes[j],
                                                                  annot_text, annot_tokens,
                                                                  annot_sentences,
                                                                  annot_lemma, annot_morph, annot_postag,
                                                                  annot_syntax_dep_tree)
-
                 _scores = self._get_proba(_features)
+
                 scores = scores[:j - 1] + _scores
                 features = pd.concat([features.iloc[:j - 1], _features])
 
-        relation = self._get_relation(features.iloc[0])
-        relation, nuclearity = relation.split('_')
         if len(scores) == 1 and scores[0] > self.confidence_threshold:
+            relation = self._get_relation(features.iloc[0])
+            relation, nuclearity = relation.split('_')
             root = DiscourseUnit(
                 id=max_id + 1,
                 left=nodes[0],

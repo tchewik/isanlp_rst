@@ -494,9 +494,11 @@ class EnsembleClassifier:
         self.labels = models[0].labels
 
         self.voting_type = voting_type
-        self.vote = np.max if self.voting_type == 'hard' else np.average
+        self.voting_weights = weights
+        # self.vote = np.max if self.voting_type == 'hard' else np.average
 
-        self.weights = weights
+    def blend_predictions(self, predictions):
+        return np.dot(predictions, self.voting_weights)
 
     def predict_proba(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
@@ -507,7 +509,7 @@ class EnsembleClassifier:
 
             results.append(dict(zip(model.labels, sample_prediction)))
 
-        ensembled_result = {key: self.vote([result[key] for result in results], weights=self.weights) for key in
+        ensembled_result = {key: self.blend_predictions([result[key] for result in results]) for key in
                             self.labels}
 
         return [ensembled_result[key] for key in self.labels]
@@ -529,7 +531,7 @@ class EnsembleClassifier:
 
         for i in range(len(results[0])):
             ensembled_result.append(
-                {key: self.vote([result[i][key] for result in results]) for key in self.labels})
+                {key: self.blend_predictions([result[i][key] for result in results]) for key in self.labels})
 
         return [[sample_result[key] for key in self.labels] for sample_result in ensembled_result]
 

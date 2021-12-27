@@ -128,7 +128,7 @@ class FeaturesProcessor:
         df.snippet_y = df.snippet_y.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
         df.snippet_y = df.snippet_y.map(tokenize)
 
-        self.annot_text = annot_text.replace('\n', ' ').replace('  ', ' ')
+        # self.annot_text = annot_text.replace('\n', ' ').replace('  ', ' ')
         self.annot_text = tokenize(annot_text)
         self.annot_tokens = annot_tokens
         self.annot_sentences = annot_sentences
@@ -161,6 +161,7 @@ class FeaturesProcessor:
             if self._verbose == 2:
                 print(f'Unable to locate second snippet >>> {(df.snippet_x.values, df.snippet_y.values)}',
                       file=sys.stderr)
+                print(self.annot_text, file=sys.stderr)
             df['tokens_x'] = df.snippet_x.map(lambda row: row.split())
             df['tokens_y'] = df.snippet_y.map(lambda row: row.split())
             # df['left_context'] = ['_END_'] * self._context_length
@@ -183,6 +184,7 @@ class FeaturesProcessor:
             print(
                 f"Unable to locate first snippet >>> {df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
+            print(self.annot_text, file=sys.stderr)
             df = df[df.snippet_x_locs.map(len) > 0]
 
         # print(df[['snippet_x', 'snippet_y', 'token_begin_y', 'token_end_y']])
@@ -196,6 +198,7 @@ class FeaturesProcessor:
             print(
                 f"Unable to locate second snippet >>> {df[df.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
                 file=sys.stderr)
+            print(self.annot_text, file=sys.stderr)
             df2 = df[df.snippet_y_locs.map(len) < 1]
             _df2 = pd.DataFrame({
                 'snippet_x': df2['snippet_y'].values,

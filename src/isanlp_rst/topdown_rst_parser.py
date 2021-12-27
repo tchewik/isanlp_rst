@@ -55,7 +55,8 @@ class TopDownRSTParser:
         string_descriptions['InputDocs'] = document['InputDocs']
 
         # 2. Correct the labels predicted with top-down model using our smart context-aware label predictor
-        self._id = -1
+        max_id = self._get_max_id(edus)
+        self._id = max_id
         toks, nods = TopDownRSTParser.docs_structure_to_nodes(structure=string_descriptions['trees'][0],
                                                               tokens=document['InputDocs'][0])
         nods = self.predict_labels(nods, annot_text, annot_tokens,
@@ -64,9 +65,17 @@ class TopDownRSTParser:
                                    annot_syntax_dep_tree)
 
         # 3. Export into isanlp.DiscourseUnit
-        du = self.docs_structure_to_du(nodes=nods, tokens=toks,
+        du = self.docs_structure_to_du(nodes=nods, tokens=annot_tokens,
                                                    _tok_min=0, _tok_max=TopDownRSTParser.max_mentioned_token(nods))
         return [du]
+
+    def _get_max_id(self, dus):
+        max_id = dus[-1].id
+        for du in dus[:-1]:
+            if du.id > max_id:
+                max_id = du.id
+
+        return max_id
 
     def predict_labels(self, nodes, annot_text, annot_tokens,
                        annot_sentences,
@@ -157,7 +166,7 @@ class TopDownRSTParser:
 
         edus = []
         for tree in doc_trees:
-            edus += extr_edus(tree, begin=tree.start)
+            edus += extr_edus(tree, begin=0)
 
         right_borders = sorted(list(set([map_offset_to_tokens(offset)[1] for offset in edus])))
         if not len(tokens) - 1 in right_borders:
@@ -288,9 +297,9 @@ class TopDownRSTParser:
             if root.left_id1 == root.left_id2:
                 self._id += 1
                 left = DiscourseUnit(id=self._id,
-                                     start=root.left_id1,
-                                     end=root.left_id2,
-                                     text=' '.join(tokens[root.left_id1:root.left_id2 + 1]),
+                                     start=tokens[root.left_id1].begin,
+                                     end=tokens[root.left_id2].end,
+                                     text=' '.join([tok.text for tok in tokens[root.left_id1:root.left_id2 + 1]]),
                                      relation='elementary')
             else:
                 left = self.docs_structure_to_du(nodes, tokens, root.left_id1, root.left_id2)
@@ -298,20 +307,20 @@ class TopDownRSTParser:
             if root.right_id1 == root.right_id2:
                 self._id += 1
                 right = DiscourseUnit(id=self._id,
-                                      start=root.right_id1,
-                                      end=root.right_id2,
-                                      text=' '.join(tokens[root.right_id1:root.right_id2 + 1]),
+                                      start=tokens[root.left_id1].begin,
+                                      end=tokens[root.left_id2].end,
+                                      text=' '.join([tok.text for tok in tokens[root.right_id1:root.right_id2 + 1]]),
                                       relation='elementary')
             else:
                 right = self.docs_structure_to_du(nodes, tokens, root.right_id1, root.right_id2)
 
             self._id += 1
             new_du = DiscourseUnit(id=self._id,
-                                   start=root.left_id1,
-                                   end=root.right_id2,
+                                   start=tokens[root.left_id1].begin,
+                                   end=tokens[root.left_id2].end,
                                    relation=rel,
                                    nuclearity=nuc,
-                                   text=' '.join(tokens[root.left_id1:root.right_id2 + 1]),
+                                   text=' '.join([tok.text for tok in tokens[root.left_id1:root.right_id2 + 1]]),
                                    left=left,
                                    right=right
                                    )
@@ -320,9 +329,9 @@ class TopDownRSTParser:
         else:
             self._id += 1
             return DiscourseUnit(id=self._id,
-                                 start=_tok_min,
-                                 end=_tok_max,
-                                 text=' '.join(tokens[_tok_min:_tok_max + 1]),
+                                 start=tokens[0].begin,
+                                 end=tokens[-1].end,
+                                 text=' '.join([tok.text for tok in tokens[_tok_min:_tok_max + 1]]),
                                  relation='elementary')
 
     @staticmethod

@@ -17,14 +17,10 @@ class TrainedPredictor:
     def predict(self, examples):
         with open(self._input_data_path, 'wb') as f:
             pickle.dump(examples, f)
-        print('examples:')
-        print(examples)
 
         self.parser.predict(data=self._input_data_path)
         with open(self._output_data_path, 'rb') as f:
             pred = pickle.load(f)
-        print('predicted:')
-        print(pred)
 
         os.remove(self._input_data_path)
         os.remove(self._output_data_path)

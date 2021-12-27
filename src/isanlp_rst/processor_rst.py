@@ -65,7 +65,7 @@ class ProcessorRST:
                 )
 
             self._span_predictor_text = _SPAN_PREDICTOR['ensemble'][0](
-                _span_classifiers, weights=[1., 1.]
+                models=_span_classifiers, weights=[.85, .15]
             )
 
         if label_predictor_type != 'ensemble':
@@ -102,10 +102,10 @@ class ProcessorRST:
         self.document_parser = GreedyRSTParser(self._tree_predictor,
                                                confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
                                                _same_sentence_bonus=0.)
-        self.additional_document_parser = GreedyRSTParser(self._tree_predictor,
-                                                          confidence_threshold=_SPAN_PREDICTOR[
-                                                                                   span_predictor_type][3] - 0.15,
-                                                          _same_sentence_bonus=0.)
+        # self.additional_document_parser = GreedyRSTParser(self._tree_predictor,
+        #                                                   confidence_threshold=_SPAN_PREDICTOR[
+        #                                                                            span_predictor_type][3] - 0.15,
+        #                                                   _same_sentence_bonus=0.)
 
         self._possible_missegmentations = ("\nIMG",
                                            "\nгимнастический коврик;",
@@ -195,18 +195,18 @@ class ProcessorRST:
                                          annot_postag,
                                          annot_syntax_dep_tree)
 
-            # 3. lower the document-level threshold if there were predicted inadequately many trees
-            if len(trees) > len(annot_text) // self.AVG_TREE_LENGTH:
-                trees = self.additional_document_parser(
-                    trees,
-                    annot_text,
-                    annot_tokens,
-                    annot_sentences,
-                    annot_lemma,
-                    annot_morph,
-                    annot_postag,
-                    annot_syntax_dep_tree
-                )
+            # # 3. lower the document-level threshold if there were predicted inadequately many trees
+            # if len(trees) > len(annot_text) // self.AVG_TREE_LENGTH:
+            #     trees = self.additional_document_parser(
+            #         trees,
+            #         annot_text,
+            #         annot_tokens,
+            #         annot_sentences,
+            #         annot_lemma,
+            #         annot_morph,
+            #         annot_postag,
+            #         annot_syntax_dep_tree
+            #     )
 
             return trees
 
