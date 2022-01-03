@@ -82,7 +82,7 @@ class ProcessorRST:
                 )
 
             self._label_predictor = _LABEL_PREDICTOR['ensemble'][0](
-                _label_classifiers, weights=[1., 2.]
+                _label_classifiers, weights=[.714, .286]
             )
 
         self._nuclearity_predictor = None

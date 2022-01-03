@@ -336,8 +336,8 @@ class TopDownRSTParser:
         else:
             self._id += 1
             return DiscourseUnit(id=self._id,
-                                 start=tokens[0].begin,
-                                 end=tokens[-1].end,
+                                 start=tokens[_tok_min].begin,
+                                 end=tokens[_tok_max].end,
                                  text=' '.join([tok.text for tok in tokens[_tok_min:_tok_max + 1]]),
                                  relation='elementary')
 
