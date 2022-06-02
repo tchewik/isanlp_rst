@@ -2,7 +2,6 @@
 
 from . import annotation_pb2 as pb
 from . import annotation as ann
-from google.protobuf.any_pb2 import Any
 from . import annotation_rst_pb2 as pb_rst
 from . import annotation_rst as ann_rst
 import sys

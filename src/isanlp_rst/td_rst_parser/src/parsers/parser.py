@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import os,glob
+import os, glob
 from datetime import datetime, timedelta
 
 import torch
@@ -13,11 +13,10 @@ from src.utils.metric import Metric
 from src.utils.parallel import DistributedDataParallel as DDP
 from src.utils.parallel import is_master
 from torch.optim import Adam
-from torch.optim.lr_scheduler import ExponentialLR,ReduceLROnPlateau
+from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
 
 
 class Parser(object):
-
     NAME = None
     MODEL = None
 
@@ -37,7 +36,7 @@ class Parser(object):
               decay=.75,
               decay_steps=5000,
               step_decay_factor=0.5,
-              step_decay_patience = 15,
+              step_decay_patience=15,
               epochs=5000,
               patience=100,
               verbose=True,
@@ -66,12 +65,11 @@ class Parser(object):
                               args.lr,
                               (args.mu, args.nu),
                               args.epsilon)
-        if self.args.learning_rate_schedule=='Exponential':
-            self.scheduler = ExponentialLR(self.optimizer, args.decay**(1/args.decay_steps))
-        elif self.args.learning_rate_schedule=='Plateau':
+        if self.args.learning_rate_schedule == 'Exponential':
+            self.scheduler = ExponentialLR(self.optimizer, args.decay ** (1 / args.decay_steps))
+        elif self.args.learning_rate_schedule == 'Plateau':
             self.scheduler = ReduceLROnPlateau(self.optimizer, 'max', factor=args.step_decay_factor,
                                                patience=args.step_decay_patience, verbose=True)
-
 
         elapsed = timedelta()
         best_e, best_metric = 1, Metric()
@@ -80,7 +78,7 @@ class Parser(object):
             start = datetime.now()
 
             logger.info(f"Epoch {epoch} / {args.epochs}:")
-            loss=self._train(train.loader)
+            loss = self._train(train.loader)
             logger.info(f"{'train:':6} - loss: {loss:.4f}")
             loss, dev_metric = self._evaluate(dev.loader)
             logger.info(f"{'dev:':6} - loss: {loss:.4f} - {dev_metric}")
@@ -95,7 +93,7 @@ class Parser(object):
                                                                                  100 * best_metric.lr,
                                                                                  100 * best_metric.lf)
                 if is_master():
-                    self.save(args.path+dev_metric_name)
+                    self.save(args.path + dev_metric_name)
                 logger.info(f"{t}s elapsed (saved)\n")
                 keep_last_n_checkpoint(args.path + '_dev_', n=5)
             else:
@@ -128,7 +126,7 @@ class Parser(object):
         loss, metric = self._evaluate(dataset.loader)
         elapsed = datetime.now() - start
         logger.info(f"loss: {loss:.4f} - {metric}")
-        logger.info(f"{elapsed}s elapsed, {len(dataset)/elapsed.total_seconds():.2f} Sents/s")
+        logger.info(f"{elapsed}s elapsed, {len(dataset) / elapsed.total_seconds():.2f} Sents/s")
 
         return loss, metric
 
@@ -175,7 +173,7 @@ class Parser(object):
         raise NotImplementedError
 
     @classmethod
-    def load(cls, path, **kwargs):
+    def load(cls, path, device='cuda', **kwargs):
         r"""
         Load data fields and model parameters from a pretrained parser.
 
@@ -192,35 +190,19 @@ class Parser(object):
         """
 
         args = Config(**locals())
-        args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        if device == 'cpu':
+            args.device = 'cpu'
+        else:
+            args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         if os.path.exists(path):
             state = torch.load(path, map_location=args.device)
 
         args = state['args'].update(args)
-        args.device = 'cpu'
+        # args.device = 'cpu'
 
         model = cls.MODEL(**args)
-
-        # print(cls.WORD.embed)
-        # model.load_pretrained(cls.WORD.embed).to(args.device)
-        # parser = cls.load(**args)
-        # parser.model = cls.MODEL(**parser.args)
-        # parser.model.load_pretrained(parser.WORD.embed).to(args.device)
-        # print(parser.WORD.embed)
-
-        # parser.model.to(args.device)
-
-        # if os.path.exists(path):  # and not args.build:
-        #     parser = cls.load(**args)
-        #     parser.model = cls.MODEL(**parser.args)
-        #     parser.model.load_pretrained(parser.WORD.embed).to(args.device)
-        #     return parser
-
-        # parser = cls.load(**args)
-
-        # print(parser.CHART)
-        # print(vars(parser.CHART.vocab))
 
         transform = state['transform']
 
@@ -255,13 +237,18 @@ class Parser(object):
 
         return parser
 
-
     def save(self, path):
         model = self.model
         if hasattr(model, 'module'):
             model = self.model.module
-        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        pretrained = state_dict.pop('pretrained.weight', None)
+
+        # if self.args.device != 'cpu':
+        #     state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        # else:
+        #     state_dict = model.state_dict()
+        pretrained = model.state_dict().pop('pretrained.weight', None)
+        if pretrained:
+            pretrained = pretrained.to('cpu')
         state = {'name': self.NAME,
                  'args': self.args,
                  'state_dict': model.state_dict(),
@@ -269,7 +256,8 @@ class Parser(object):
                  'transform': self.transform}
         torch.save(state, path)
 
-def keep_last_n_checkpoint(checkpoint_dir,n=5):
+
+def keep_last_n_checkpoint(checkpoint_dir, n=5):
     checkpoints = glob.glob(checkpoint_dir + '*.pt')
     checkpoints.sort(key=os.path.getmtime)
     num_checkpoints = len(checkpoints)

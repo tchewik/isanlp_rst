@@ -5,8 +5,8 @@ from .src import PointingDiscourseGoldsegmentationEduRepParser
 
 
 class TrainedPredictor:
-    def __init__(self, model_path):
-        self.parser = PointingDiscourseGoldsegmentationEduRepParser.load(model_path)
+    def __init__(self, model_path, device='cuda'):
+        self.parser = PointingDiscourseGoldsegmentationEduRepParser.load(model_path, device=device)
         self._tempdir = './tmp'
         if not os.path.isdir(self._tempdir):
             os.mkdir(self._tempdir)

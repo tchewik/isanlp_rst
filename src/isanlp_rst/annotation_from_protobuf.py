@@ -5,7 +5,7 @@ from . import annotation_rst as ann_rst
 from google.protobuf.any_pb2 import Any
 
 
-def get_pb_type(pb_ann):    
+def get_pb_type(pb_ann):
     if pb_ann.Is(pb.AnnotationList.DESCRIPTOR):
         return pb.AnnotationList
     elif pb_ann.Is(pb.AnnotationMap.DESCRIPTOR):
@@ -40,7 +40,7 @@ def convert_tuple(obj):
 
 def convert_list(obj):
     return [convert_annotation(item) for item in obj.data]
-    
+
 
 def convert_annotation(pb_ann):
     if type(pb_ann) is Any:
@@ -49,12 +49,12 @@ def convert_annotation(pb_ann):
         pb_ann.Unpack(obj)
     else:
         obj = pb_ann
-    
-    #TODO: optimize somehow
+
+    # TODO: optimize somehow
     if type(obj) is pb.AnnotationList:
         return convert_list(obj)
     elif obj.DESCRIPTOR == pb.AnnotationMap.DESCRIPTOR:
-        return {item.key : convert_annotation(item.value) for item in obj.data}
+        return {item.key: convert_annotation(item.value) for item in obj.data}
     elif obj.DESCRIPTOR == pb.AnnotationTuple.DESCRIPTOR:
         return convert_tuple(obj)
     elif obj.DESCRIPTOR == pb.Sentence.DESCRIPTOR:
@@ -70,15 +70,17 @@ def convert_annotation(pb_ann):
     elif obj.DESCRIPTOR == pb.LngString.DESCRIPTOR:
         return obj.value
     elif obj.DESCRIPTOR == pb.TaggedSpan.DESCRIPTOR:
-        return ann.TaggedSpan(tag = obj.tag, 
-                              begin = obj.span.begin, 
-                              end = obj.span.end)
+        return ann.TaggedSpan(tag=obj.tag,
+                              begin=obj.span.begin,
+                              end=obj.span.end)
     elif obj.DESCRIPTOR == pb.Event.DESCRIPTOR:
-        return ann.Event(pred = convert_tuple(obj.pred), 
-                         args = convert_list(obj.args))
+        return ann.Event(pred=convert_tuple(obj.pred),
+                         args=convert_list(obj.args))
     elif obj.DESCRIPTOR == pb_rst.DiscourseUnit.DESCRIPTOR:
         if not obj.relation:
             return None
-        return ann_rst.DiscourseUnit(id=obj.id, left=convert_annotation(obj.left), right=convert_annotation(obj.right), text=obj.text, start=obj.start, end=obj.end, relation=obj.relation, nuclearity=obj.nuclearity, proba=float(obj.proba))
+        return ann_rst.DiscourseUnit(id=obj.id, left=convert_annotation(obj.left), right=convert_annotation(obj.right),
+                                     text=obj.text, start=obj.start, end=obj.end, relation=obj.relation,
+                                     nuclearity=obj.nuclearity, proba=float(obj.proba))
     else:
         raise TypeError()

@@ -4,21 +4,15 @@ import pickle
 import numpy as np
 import pandas as pd
 from allennlp.predictors import Predictor
-# from models.customization_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
-# from models.customization_package.dataset_readers.custom_reader import CustomDataReader
-from models.bimpm_custom_package.model.esim import CustomESIM
 from models.bimpm_custom_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
-from models.bimpm_custom_package.dataset_readers.custom_reader import CustomDataReader
 
 from symbol_map import SYMBOL_MAP
 
-
-##from models.customization_package2.model.contextual_bimpm_predictor import ContextualBiMpmPredictor
-##from models.customization_package2.dataset_readers.contextual_reader import ContextualReader
+MAX_ALLOWED_LEN = 5000
 
 
 class SimpleAllenNLPClassifier:
-    def __init__(self, model_dir_path, cuda_device):
+    def __init__(self, model_dir_path, cuda_device, max_len=MAX_ALLOWED_LEN):
         self.model_dir_path = model_dir_path
         self._cuda_device = cuda_device
 
@@ -30,7 +24,7 @@ class SimpleAllenNLPClassifier:
         self._default_proba = [1., ] + [0.] * (self.num_classes - 1)
         self.DEFAULT_LABEL = 'joint_NN'
 
-        self._max_len = 90
+        self._max_len = max_len
         self._symbol_map = SYMBOL_MAP
 
         self._left_dummy_placement = '-'
@@ -48,10 +42,11 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
         - Right span tokens
     """
 
-    def __init__(self, model_dir_path, cuda_device=-1):
-        SimpleAllenNLPClassifier.__init__(self, model_dir_path, cuda_device)
+    def __init__(self, model_dir_path, cuda_device=-1, max_len=MAX_ALLOWED_LEN):
+        SimpleAllenNLPClassifier.__init__(self, model_dir_path, cuda_device, max_len)
 
         self._model = Predictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'),
+                                          predictor_name='textual_entailment',
                                           cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, *args, **kwargs):
@@ -61,7 +56,7 @@ class AllenNLPBiMPMClassifier(SimpleAllenNLPClassifier):
 
         if len(_snippet_x.split()) == 0 or len(_snippet_y.split()) == 0 or len(
                 _snippet_x.split()) > self._max_len or len(
-                _snippet_y.split()) > self._max_len:
+            _snippet_y.split()) > self._max_len:
             return self._default_proba
 
         prediction = self._model.predict(_snippet_x, _snippet_y)
@@ -143,11 +138,11 @@ class AllenNLPCustomBiMPMClassifier(SimpleAllenNLPClassifier):
         - Additional features
     """
 
-    def __init__(self, model_dir_path, cuda_device=-1):
-        SimpleAllenNLPClassifier.__init__(self, model_dir_path, cuda_device)
+    def __init__(self, model_dir_path, cuda_device=-1, max_len=500):
+        SimpleAllenNLPClassifier.__init__(self, model_dir_path, cuda_device, max_len)
 
         self._model = CustomBiMPMPredictor.from_path(os.path.join(self.model_dir_path, 'model.tar.gz'),
-                                                     predictor_name='custom_bimpm_predictor',
+                                                     predictor_name='models.bimpm_custom_package.model.custom_bimpm_predictor.CustomBiMPMPredictor',
                                                      cuda_device=self._cuda_device)
 
     def predict_proba(self, snippet_x, snippet_y, same_sentence, same_paragraph, *args, **kwargs):
@@ -352,7 +347,7 @@ class SklearnClassifier:
         - label_encoder.pkl    : trained label encoder to decode predictions
     """
 
-    def __init__(self, model_dir_path, *args, **kwargs):
+    def __init__(self, model_dir_path, max_len=MAX_ALLOWED_LEN, *args, **kwargs):
         self.model_dir_path = model_dir_path
 
         file_drop_columns = os.path.join(self.model_dir_path, 'drop_columns.pkl')
@@ -390,15 +385,15 @@ class SklearnClassifier:
         else:
             self.labels = list(map(str, self.classes_))
 
-        self.MAX_LEN = 100
+        self._max_len = max_len
 
     def predict_proba(self, features, *args, **kwargs):
         if type(features) == int and features == -1:
             return self._default_proba
 
         try:
-            if features['snippet_x'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN or \
-                    features['snippet_y'].map(lambda row: len(row.split())).values[0] > self.MAX_LEN:
+            if features['snippet_x'].map(lambda row: len(row.split())).values[0] > self._max_len or \
+                    features['snippet_y'].map(lambda row: len(row.split())).values[0] > self._max_len:
                 return self._default_proba
 
             predictions = self._model.predict_proba(self._preprocess_features(features))[0]
@@ -415,14 +410,14 @@ class SklearnClassifier:
         try:
             predictions = self._model.predict_proba(self._preprocess_features(features))
             predictions = [predictions[i] if len(
-                features['snippet_x'].iloc[i].split()) < self.MAX_LEN and len(
-                features['snippet_y'].iloc[i].split()) < self.MAX_LEN else self._default_proba for i in
+                features['snippet_x'].iloc[i].split()) < self._max_len and len(
+                features['snippet_y'].iloc[i].split()) < self._max_len else self._default_proba for i in
                            range(len(predictions))]
         except AttributeError:
             predictions = self._model._predict_proba_lr(self._preprocess_features(features))
             predictions = [predictions[i] if len(
-                features['snippet_x'].iloc[i].split()) < self.MAX_LEN and len(
-                features['snippet_y'].iloc[i].split()) < self.MAX_LEN else self._default_proba for i in
+                features['snippet_x'].iloc[i].split()) < self._max_len and len(
+                features['snippet_y'].iloc[i].split()) < self._max_len else self._default_proba for i in
                            range(len(predictions))]
         return predictions
 
@@ -498,7 +493,25 @@ class EnsembleClassifier:
         # self.vote = np.max if self.voting_type == 'hard' else np.average
 
     def blend_predictions(self, predictions):
-        return np.dot(predictions, self.voting_weights)
+        return np.dot(predictions, self.voting_weights) / len(self.voting_weights)
+
+    def vote_predictions(self, predictions):
+        pred1, pred2 = predictions
+        assert len(pred1) == len(pred2)
+
+        result = []
+        for i in range(len(pred1)):
+            sample_result = {}
+            for key in pred1[i].keys():
+                if self.voting_type == 'soft':
+                    sample_result[key] = (pred1[i][key] * self.voting_weights[0] + pred2[i][key] * self.voting_weights[
+                        1]) / 2.
+                else:
+                    sample_result[key] = max(pred1[i][key], pred2[i][key])
+
+            result.append(sample_result)
+
+        return result
 
     def predict_proba(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
@@ -507,11 +520,9 @@ class EnsembleClassifier:
             sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args,
                                                     **kwargs)
 
-            results.append(dict(zip(model.labels, sample_prediction)))
+            results.append([dict(zip(model.labels, sample_prediction))])
 
-        ensembled_result = {key: self.blend_predictions([result[key] for result in results]) for key in
-                            self.labels}
-
+        ensembled_result = self.vote_predictions(results)[0]
         return [ensembled_result[key] for key in self.labels]
 
     def predict_proba_batch(self, snippet_x, snippet_y, features, *args, **kwargs):
@@ -527,12 +538,7 @@ class EnsembleClassifier:
 
             results.append(annot_predictions)
 
-        ensembled_result = []
-
-        for i in range(len(results[0])):
-            ensembled_result.append(
-                {key: self.blend_predictions([result[i][key] for result in results]) for key in self.labels})
-
+        ensembled_result = self.vote_predictions(results)
         return [[sample_result[key] for key in self.labels] for sample_result in ensembled_result]
 
     def predict(self, snippet_x, snippet_y, features, *args, **kwargs):

@@ -1,9 +1,5 @@
 def _prepare_sequence(sequence):
-    
     symbol_map = {
-        'x': 'х',
-        'X': 'X',
-        'y': 'у',
         '—': '-',
         '“': '«',
         '‘': '«',

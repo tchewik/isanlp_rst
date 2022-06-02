@@ -1,49 +1,61 @@
-from allennlp_segmenter import AllenNLPSegmenter
-from classifier_wrappers import *
-from features_processor_default import *
-from greedy_rst_parser import GreedyRSTParser
-from topdown_rst_parser import TopDownRSTParser
+import segmenters as sgm
+import classifier_wrappers as clf
+import features_processors as feat
+import greedy_rst_parser, topdown_rst_parser, cky_rst_parser
 from isanlp.annotation import Sentence
-from model_segmenter import ModelSegmenter  # deprecated
-from rst_tree_predictor import *
+import rst_tree_predictors as treep
+import os
 
+# Segmenter: (class, directory)
 _SEGMENTER = {
-    'lstm': AllenNLPSegmenter,
-    'feedforward': ModelSegmenter,
+    'lstm': (sgm.AllenNLPSegmenter, 'segmenter/elmo_ft'),
 }
 
+# Feature processing: class
 _FEATURE_PROCESSOR = {
-    'neural': FeaturesProcessorTokenizer,
-    'baseline': FeaturesProcessor,
+    'neural': feat.FeaturesProcessorTokenizer,
+    'baseline': feat.FeaturesProcessor,
 }
 
+# Bottom-up tree prediction: (class, directory, paragraph probability threshold, document probability threshold)
 _SPAN_PREDICTOR = {
-    'neural': (AllenNLPCustomBiMPMClassifier, 'structure_predictor_bimpm', 0., 0.6),
-    'baseline': (SklearnClassifier, 'structure_predictor_baseline', 0.15, 0.2),
-    'ensemble': (EnsembleClassifier, '', 0., 0.6)
+    'neural': (clf.AllenNLPCustomBiMPMClassifier, 'structure_predictor_bimpm/elmo_ft', 0., 0.6),
+    'baseline': (clf.SklearnClassifier, 'structure_predictor_baseline', 0.15, 0.2),
+    'ensemble': (clf.EnsembleClassifier, '', 0., 0.7)  # 0., 0.6
 }
+_SPAN_PREDICTOR_ENSEMBLE_WEIGHTS = {'baseline': .8, 'neural': .9}
 
+# Relation classification: (class, directory)
 _LABEL_PREDICTOR = {
-    'bimpm': (AllenNLPBiMPMClassifier, 'label_predictor_bimpm'),
-    'esim': (AllenNLPBiMPMClassifier, 'label_predictor_esim'),
-    'baseline': (SklearnClassifier, 'label_predictor_baseline'),
-    'ensemble': (EnsembleClassifier,)
+    'neural': (clf.AllenNLPBiMPMClassifier, 'label_predictor_bimpm/elmo_ft'),
+    'baseline': (clf.SklearnClassifier, 'label_predictor_baseline'),
+    'ensemble': (clf.EnsembleClassifier,)
 }
 
+_LABEL_PREDICTOR_ENSEMBLE_WEIGHTS = {'baseline': .8, 'neural': .3}
+
+# Tree prediction (SpanPredictorType_RelationPredictorType): class
 _TREE_PREDICTOR = {
-    'neural_neural': LargeNNTreePredictor,
-    'neural_ensemble': EnsembleNNTreePredictor,
-    'ensemble_ensemble': DoubleEnsembleNNTreePredictor,
+    'neural_neural': treep.LargeNNTreePredictor,
+    'neural_ensemble': treep.EnsembleNNTreePredictor,
+    'ensemble_ensemble': treep.DoubleEnsembleNNTreePredictor,
+}
+
+# Full parsing from EDUs: class
+_PARSER = {
+    'greedy_bottom_up': greedy_rst_parser.GreedyRSTParser,
+    'cky_bottom_up': cky_rst_parser.CKYRSTParser,
+    'top_down': topdown_rst_parser.TopDownRSTParser
 }
 
 
 class ProcessorRST:
     def __init__(self, model_dir_path, segmenter_type='lstm', span_predictor_type='baseline',
-                 label_predictor_type='baseline'):
+                 label_predictor_type='baseline', add_document_parser=False):
 
         self._model_dir_path = model_dir_path
 
-        self.segmenter = _SEGMENTER[segmenter_type](self._model_dir_path)
+        self.segmenter = _SEGMENTER[segmenter_type][0](self._model_dir_path, _SEGMENTER[segmenter_type][1])
 
         _features_type = sorted([span_predictor_type, label_predictor_type])[0]
         _features_type = 'baseline' if _features_type == 'ensemble' else _features_type
@@ -65,7 +77,7 @@ class ProcessorRST:
                 )
 
             self._span_predictor_text = _SPAN_PREDICTOR['ensemble'][0](
-                models=_span_classifiers, weights=[.85, .15]
+                models=_span_classifiers, weights=[.8, .9]
             )
 
         if label_predictor_type != 'ensemble':
@@ -74,7 +86,7 @@ class ProcessorRST:
         else:
             _label_classifiers = []
 
-            for _type in ('baseline', 'esim'):
+            for _type in ('baseline', 'neural'):
                 _label_classifiers.append(
                     _LABEL_PREDICTOR[_type][0](
                         model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[_type][1])
@@ -82,7 +94,7 @@ class ProcessorRST:
                 )
 
             self._label_predictor = _LABEL_PREDICTOR['ensemble'][0](
-                _label_classifiers, weights=[.714, .286]
+                _label_classifiers, weights=[.8, .3]
             )
 
         self._nuclearity_predictor = None
@@ -96,59 +108,19 @@ class ProcessorRST:
             label_predictor=self._label_predictor,
             nuclearity_predictor=self._nuclearity_predictor)
 
-        self.AVG_TREE_LENGTH = 400
+        self.paragraph_parser = _PARSER['top_down'](self._tree_predictor,
+                                                    trained_model_path='models/topdown_model/model.pt')
+        self.document_parser = _PARSER['greedy_bottom_up'](self._tree_predictor,
+                                                           confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
+                                                           _same_sentence_bonus=0.)
 
-        self.paragraph_parser = TopDownRSTParser(self._tree_predictor, trained_model_path='models/topdown_model/model.pt')
-        self.document_parser = GreedyRSTParser(self._tree_predictor,
-                                               confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
-                                               _same_sentence_bonus=0.)
+        self.AVG_TREE_LENGTH = 100  # Varies in different genres (96-116), roughly assuming that's 100 tokens per tree
+        self.additional_document_parser = _PARSER['greedy_bottom_up'](
+            self._tree_predictor,
+            confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15,
+            _same_sentence_bonus=0.) if add_document_parser else None
 
-        # self.additional_document_parser = GreedyRSTParser(self._tree_predictor,
-        #                                                   confidence_threshold=_SPAN_PREDICTOR[
-        #                                                                            span_predictor_type][3] - 0.15,
-        #                                                   _same_sentence_bonus=0.)
-
-        self._possible_missegmentations = ("\nIMG",
-                                           "\nгимнастический коврик;",
-                                           "\nгантели или бутылки с песком;",
-                                           "\nнебольшой резиновый мяч;",
-                                           "\nэластичная лента (эспандер);",
-                                           "\nхула-хуп (обруч).",
-                                           "\n200?",
-                                           "\n300?",
-                                           "\nНе требуйте странного.",
-                                           "\nИспользуйте мою модель.",
-                                           '\n"А чего вы от них требуете?"',
-                                           '\n"Решить проблемы с тестерами".',
-                                           "\nКак гончая на дичь.",
-                                           "\nИ крупная.",
-                                           "\nВ прошлом году компания удивила рынок",
-                                           "\nЧужой этики особенно.",
-                                           "\nНо и своей тоже.",
-                                           "\nАэропорт имени,",
-                                           "\nА вот и монголы.",
-                                           "\nЗолотой Будда.",
-                                           "\nДворец Богдо-Хана.",
-                                           "\nПлощадь Сухэ-Батора.",
-                                           "\nОдноклассники)",
-                                           "\nВечерняя площадь.",
-                                           "\nТугрики.",
-                                           "\nВнутренние монголы.",
-                                           "\nВид сверху.",
-                                           "\nНациональный парк Тэрэлж. IMG IMG",
-                                           '\nГора "Черепаха".',
-                                           "\nПуть к медитации.",
-                                           "\nЖить надо высоко,",
-                                           "\nЧан с кумысом.",
-                                           "\nЖилая юрта.",
-                                           "\nКумыс.",
-                                           "\nТрадиционное занятие монголов",
-                                           "\nДвугорбый верблюд мало где",
-                                           "\nМонгол Шуудан переводится",
-                                           "\nОвощные буузы.",
-                                           "\nЗнаменитый чай!",
-                                           "\nменя приняли кандидатом",
-                                           )
+        self._possible_missegmentations = ()  # Here were the examples of inconsistency between sources and annotation
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
@@ -196,18 +168,19 @@ class ProcessorRST:
                                          annot_postag,
                                          annot_syntax_dep_tree)
 
-            # # 3. lower the document-level threshold if there were predicted inadequately many trees
-            # if len(trees) > len(annot_text) // self.AVG_TREE_LENGTH:
-            #     trees = self.additional_document_parser(
-            #         trees,
-            #         annot_text,
-            #         annot_tokens,
-            #         annot_sentences,
-            #         annot_lemma,
-            #         annot_morph,
-            #         annot_postag,
-            #         annot_syntax_dep_tree
-            #     )
+            # 3. (Optionally) lower the document-level threshold if there were predicted inadequately many trees
+            if self.additional_document_parser:
+                if len(trees) > len(annot_text.split()) // self.AVG_TREE_LENGTH:
+                    trees = self.additional_document_parser(
+                        trees,
+                        annot_text,
+                        annot_tokens,
+                        annot_sentences,
+                        annot_lemma,
+                        annot_morph,
+                        annot_postag,
+                        annot_syntax_dep_tree
+                    )
 
             return trees
 

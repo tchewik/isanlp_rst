@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import sys
 
 from isanlp.annotation_rst import DiscourseUnit
 
@@ -48,8 +47,6 @@ class GreedyRSTParser:
         while len(scores) > 1 and any([score > self.confidence_threshold for score in scores]):
             # select two nodes to merge
             j = to_merge(scores)  # position of the pair in list
-            if j + 1 >= len(nodes):
-                return nodes
 
             # make the new node by merging node[j] + node[j+1]
             relation = self._get_relation(features.iloc[j])

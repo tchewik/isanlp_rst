@@ -26,10 +26,6 @@ text_html_map = {
     r'\^': r'',
     r'^': r'',
     r'±': r'+',
-    r'x': r'х',
-    r'y': r'у',
-    r'companу': r'company',
-    r'kasperskу': r'kaspersky',
 }
 
 SYMBOL_MAP = {
@@ -189,11 +185,6 @@ def prepare_text(text):
         '\^': r'',
         '^': r'',
         '±': r'+',
-        'y': r'у',
-        'xc': r'хс',
-        'x': r'х',
-        r'companу': r'company',
-        r'kasperskу': r'kaspersky',
     }
 
     for key in text_html_map.keys():

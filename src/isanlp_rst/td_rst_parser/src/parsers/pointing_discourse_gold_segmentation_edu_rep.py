@@ -63,9 +63,9 @@ class PointingDiscourseGoldsegmentationEduRepParser(Parser):
               patience=100,
               verbose=True,
               **kwargs):
-        train = os.path.join(data_path, "train_approach1")
-        dev = os.path.join(data_path, "dev_approach1")
-        test = os.path.join(data_path, "test_approach1")
+        train = os.path.join(data_path, "train_data")
+        dev = os.path.join(data_path, "dev_data")
+        test = os.path.join(data_path, "test_data")
 
         args = self.args.update(locals())
         init_logger(logger, verbose=args.verbose)
@@ -174,7 +174,6 @@ class PointingDiscourseGoldsegmentationEduRepParser(Parser):
         dataset = Dataset(self.transform, data)
         dataset.build(args.batch_size, n_buckets=1, shuffle=False)
         logger.info(f"\n{dataset}")
-        logger.info(vars(dataset))
 
         logger.info("Make predictions on the dataset")
         start = datetime.now()
@@ -293,7 +292,7 @@ class PointingDiscourseGoldsegmentationEduRepParser(Parser):
             # chart_preds = self.model.decode(s_span, s_label, mask)
             # preds['trees'].extend([Tree.build(tree, [(i, j, self.CHART.vocab[label]) for i, j, label in chart])
             #                        for tree, chart in zip(trees, chart_preds)])
-            preds_ = self.model.decode(words, feats, edu_break, beam_size=self.args.beam_size)
+            preds_ = self.model.decode(words.to(self.args.device), feats.to(self.args.device), edu_break.to(self.args.device), beam_size=self.args.beam_size)
             preds['trees'].extend( [DiscourseTreeDocEduGold.build(
                 [(i, k, j, self.PARSING_LABEL_EDU.vocab.itos[label])
                  for i, k, j, label in pred])
@@ -330,7 +329,7 @@ class PointingDiscourseGoldsegmentationEduRepParser(Parser):
             The created parser.
         """
 
-        train = os.path.join(data_path, "train_approach1")
+        train = os.path.join(data_path, "train_data")
         args = Config(**locals())
         args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         os.makedirs(os.path.dirname(path), exist_ok=True)

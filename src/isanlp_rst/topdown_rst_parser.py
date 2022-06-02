@@ -1,11 +1,11 @@
 import re
 
 import pandas as pd
+import razdel
 from isanlp.annotation_rst import DiscourseUnit
 
 from td_rst_parser.predict_interactive import TrainedPredictor
 
-import razdel
 
 def tokenize(text):
     result = ' '.join([tok.text for tok in razdel.tokenize(text)])
@@ -130,14 +130,14 @@ class TopDownRSTParser:
     def _get_relation(self, pair_feature):
         relation = 'joint_NN'
 
-        try:
-            relation = self.tree_predictor.predict_label(pair_feature)
-            if type(relation) == list:
-                relation = relation[0]
+        # try:
+        relation = self.tree_predictor.predict_label(pair_feature)
+        if type(relation) == list:
+            relation = relation[0]
 
-        except RuntimeError as e:
-            # Some vector sizes do not fit in the model
-            print(e)
+        # except RuntimeError as e:
+        #     # Some vector sizes do not fit in the model
+        #     print(e)
 
         return relation
 
