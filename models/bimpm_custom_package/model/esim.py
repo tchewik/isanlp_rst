@@ -1,26 +1,19 @@
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 import numpy
 import torch
-
 from allennlp.common.checks import check_dimensions_match
-from allennlp.data import Vocabulary
+from allennlp.data import TextFieldTensors, Vocabulary
 from allennlp.models.model import Model
-from allennlp.models.esim import ESIM
 from allennlp.modules import FeedForward, InputVariationalDropout
-# from allennlp.modules.matrix_attention.matrix_attention import MatrixAttention
-from allennlp.modules.matrix_attention.legacy_matrix_attention import LegacyMatrixAttention
-from allennlp.modules.similarity_functions.similarity_function import SimilarityFunction
 from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
-# from allennlp.nn import InitializerApplicator
-from allennlp.nn.initializers import InitializerApplicator
-from allennlp.nn.regularizers import RegularizerApplicator
+from allennlp.modules.matrix_attention.matrix_attention import MatrixAttention
+from allennlp.nn import InitializerApplicator
 from allennlp.nn.util import (
     get_text_field_mask,
     masked_softmax,
     weighted_sum,
     masked_max,
-    replace_masked_values,
 )
 from allennlp.training.metrics import CategoricalAccuracy, F1Measure
 
@@ -56,28 +49,27 @@ class CustomESIM(Model):
     """
 
     def __init__(
-        self,
-        vocab: Vocabulary,
-        text_field_embedder: TextFieldEmbedder,
-        encoder: Seq2SeqEncoder,
-        similarity_function: SimilarityFunction,
-        projection_feedforward: FeedForward,
-        inference_encoder: Seq2SeqEncoder,
-        output_feedforward: FeedForward,
-        output_logit: FeedForward,
-        dropout: float = 0.5,
-        class_weights: list = [],
-        initializer: InitializerApplicator = InitializerApplicator(),
-        regularizer: Optional[RegularizerApplicator] = None,
-        encode_together: bool = False,
+            self,
+            vocab: Vocabulary,
+            text_field_embedder: TextFieldEmbedder,
+            encoder: Seq2SeqEncoder,
+            matrix_attention: MatrixAttention,
+            projection_feedforward: FeedForward,
+            inference_encoder: Seq2SeqEncoder,
+            output_feedforward: FeedForward,
+            output_logit: FeedForward,
+            encode_together: bool = False,
+            dropout: float = 0.5,
+            class_weights: list = [],
+            initializer: InitializerApplicator = InitializerApplicator(),
+            **kwargs,
     ) -> None:
-        super().__init__(vocab, regularizer)
+        super().__init__(vocab, **kwargs)
 
         self._text_field_embedder = text_field_embedder
         self._encoder = encoder
-        self.encode_together = encode_together
 
-        self._matrix_attention = LegacyMatrixAttention(similarity_function)
+        self._matrix_attention = matrix_attention
         self._projection_feedforward = projection_feedforward
 
         self._inference_encoder = inference_encoder
@@ -88,14 +80,10 @@ class CustomESIM(Model):
         else:
             self.dropout = None
             self.rnn_input_dropout = None
-            
-        if class_weights:
-            self.class_weights = class_weights
-        else:
-            self.class_weights = [1.] * self.output_feedforward.get_output_dim()
 
         self._output_feedforward = output_feedforward
         self._output_logit = output_logit
+        self.encode_together = encode_together
 
         self._num_labels = vocab.get_vocab_size(namespace="labels")
 
@@ -110,7 +98,7 @@ class CustomESIM(Model):
             projection_feedforward.get_input_dim(),
             "encoder output dim",
             "projection feedforward input",
-        )
+            )
         check_dimensions_match(
             projection_feedforward.get_output_dim(),
             inference_encoder.get_input_dim(),
@@ -119,29 +107,34 @@ class CustomESIM(Model):
         )
 
         self.metrics = {"accuracy": CategoricalAccuracy()}
-        
+
+        if class_weights:
+            self.class_weights = class_weights
+        else:
+            self.class_weights = [1.] * self.classifier_feedforward.get_output_dim()
+
         for _class in range(len(self.class_weights)):
             self.metrics.update({
                 f"f1_rel{_class}": F1Measure(_class),
             })
-        
+
         self._loss = torch.nn.CrossEntropyLoss(weight=torch.FloatTensor(self.class_weights))
 
         initializer(self)
 
     def forward(  # type: ignore
-        self,
-        premise: Dict[str, torch.LongTensor],
-        hypothesis: Dict[str, torch.LongTensor],
-        label: torch.IntTensor = None,
-        metadata: List[Dict[str, Any]] = None,
+            self,
+            premise: TextFieldTensors,
+            hypothesis: TextFieldTensors,
+            label: torch.IntTensor = None,
+            metadata: List[Dict[str, Any]] = None,
     ) -> Dict[str, torch.Tensor]:
 
         """
         # Parameters
-        premise : Dict[str, torch.LongTensor]
+        premise : `TextFieldTensors`
             From a `TextField`
-        hypothesis : Dict[str, torch.LongTensor]
+        hypothesis : `TextFieldTensors`
             From a `TextField`
         label : `torch.IntTensor`, optional (default = `None`)
             From a `LabelField`
@@ -159,32 +152,10 @@ class CustomESIM(Model):
         loss : `torch.FloatTensor`, optional
             A scalar loss to be optimised.
         """
-        
-        def encode_pair(x1, x2, mask1=None, mask2=None):
-            _joined_pair: Dict[str, torch.LongTensor] = {}
-            
-            for key in premise.keys():
-                bsz = premise[key].size(0)
-                x1_len, x2_len = premise[key].size(1), hypothesis[key].size(1)
-                sep = torch.empty([bsz, 1], dtype=torch.long, device=premise[key].device)
-                sep.data.fill_(0) # 2 is the id for </s>
-                
-                x = torch.cat([premise[key], hypothesis[key]], dim=1)
-                _joined_pair[key] = x
-                
-            x_output = self.dropout(self._text_field_embedder(_joined_pair))
-            return x_output[:, :x1_len], x_output[:, -x2_len:], mask1, mask2
-        
-#         embedded_premise = self._text_field_embedder(premise)
-#         embedded_hypothesis = self._text_field_embedder(hypothesis)
+        embedded_premise = self._text_field_embedder(premise)
+        embedded_hypothesis = self._text_field_embedder(hypothesis)
         premise_mask = get_text_field_mask(premise)
         hypothesis_mask = get_text_field_mask(hypothesis)
-        
-        if self.encode_together:
-            embedded_premise, embedded_hypothesis, _, _ = encode_pair(premise, hypothesis)
-        else:
-            embedded_premise = self.dropout(self._text_field_embedder(premise))
-            embedded_hypothesis = self.dropout(self._text_field_embedder(hypothesis))
 
         # apply dropout for LSTM
         if self.rnn_input_dropout:
@@ -210,17 +181,21 @@ class CustomESIM(Model):
 
         # the "enhancement" layer
         premise_enhanced = torch.cat(
-            [encoded_premise, attended_hypothesis,
-             encoded_premise - attended_hypothesis,
-             encoded_premise * attended_hypothesis,
-            ],
+            [
+                encoded_premise,
+                attended_hypothesis,
+                encoded_premise - attended_hypothesis,
+                encoded_premise * attended_hypothesis,
+                ],
             dim=-1,
         )
         hypothesis_enhanced = torch.cat(
-            [encoded_hypothesis, attended_premise,
-             encoded_hypothesis - attended_premise,
-             encoded_hypothesis * attended_premise,
-            ],
+            [
+                encoded_hypothesis,
+                attended_premise,
+                encoded_hypothesis - attended_premise,
+                encoded_hypothesis * attended_premise,
+                ],
             dim=-1,
         )
 
@@ -238,8 +213,8 @@ class CustomESIM(Model):
 
         # The pooling layer -- max and avg pooling.
         # (batch_size, model_dim)
-        v_a_max, _ = replace_masked_values(v_ai, premise_mask.unsqueeze(-1), -1e7).max(dim=1)
-        v_b_max, _ = replace_masked_values(v_bi, hypothesis_mask.unsqueeze(-1), -1e7).max(dim=1)
+        v_a_max = masked_max(v_ai, premise_mask.unsqueeze(-1), dim=1)
+        v_b_max = masked_max(v_bi, hypothesis_mask.unsqueeze(-1), dim=1)
 
         v_a_avg = torch.sum(v_ai * premise_mask.unsqueeze(-1), dim=1) / torch.sum(
             premise_mask, 1, keepdim=True
@@ -265,7 +240,7 @@ class CustomESIM(Model):
         if label is not None:
             loss = self._loss(label_logits, label.long().view(-1))
             output_dict["loss"] = loss
-            
+
             for metric in self.metrics.values():
                 metric(label_logits, label.long().view(-1))
 
@@ -273,12 +248,12 @@ class CustomESIM(Model):
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         metrics = {"accuracy": self.metrics["accuracy"].get_metric(reset=reset)}
-        
+
         for _class in range(len(self.class_weights)):
             metrics.update({
-                f"f1_rel{_class}": self.metrics[f"f1_rel{_class}"].get_metric(reset=reset)[2],
+                f"f1_rel{_class}": self.metrics[f"f1_rel{_class}"].get_metric(reset=reset)['f1'],
             })
-        
+
         metrics["f1_macro"] = numpy.mean([metrics[f"f1_rel{_class}"] for _class in range(len(self.class_weights))])
         return metrics
 

@@ -1,25 +1,29 @@
 <rst>
 	<header>
 		<relations>
-			<rel name="preparation" type="rst" />
-			<rel name="contrast" type="multinuc" />
+			<rel name="purpose" type="rst" />
+			<rel name="attribution" type="rst" />
 			<rel name="elaboration" type="rst" />
+			<rel name="contrast" type="multinuc" />
+			<rel name="cause-effect" type="rst" />
 			<rel name="antithesis" type="multinuc" />
-			<rel name="joint" type="multinuc" />
-			<rel name="comparison" type="multinuc" />
 		</relations>
 	</header>
 	<body>
-		<segment id="0" parent="8" relname="joint">Новости о грядущей эмиссии в США обвалили доллар</segment>
-		<segment id="1" parent="8" relname="joint">и подняли цену золота.</segment>
-		<segment id="2" parent="8" relname="elaboration">При этом рост количества долларов пока не зафиксирован.</segment>
-		<segment id="3" parent="6" relname="preparation">Со швейцарским франком ситуация противоположная:</segment>
-		<segment id="4" parent="6" relname="contrast">стало известно, что в феврале денежная масса Швейцарии увеличилась на 3.5%,</segment>
-		<segment id="5" parent="6" relname="contrast">однако биржевой курс франка и его покупательная способность за неделю выросли.</segment>
-		<group id="9" type="span" parent="10" relname="comparison"/>
-		<group id="8" type="multinuc" parent="9" relname="span"/>
-		<group id="7" type="span" parent="10" relname="comparison"/>
-		<group id="6" type="multinuc" parent="7" relname="span"/>
-		<group id="10" type="span"/>
+		<segment id="9" parent="15" relname="span">Парацетамол ( известный в Соединённых Штатах как ацетаминофен ) – одно из самых распространённых лекарств в мире .</segment>
+		<segment id="10" parent="13" relname="cause-effect">Из-за своей безопасности</segment>
+		<segment id="11" parent="13" relname="span">он является предпочтительным препаратом</segment>
+		<segment id="12" parent="11" relname="purpose">для снятия жара и болевых синдромов .</segment>
+		<segment id="16" parent="17" relname="attribution">Однако 10 лет назад была высказана гипотеза о том ,</segment>
+		<segment id="17" parent="18" relname="span">что использование парацетамола может увеличить риск развития астмы .</segment>
+		<segment id="19" parent="20" relname="attribution">Высказывалось предположение ,</segment>
+		<segment id="20" parent="21" relname="span">что переход в США в 80-х гг . с применения аспирина на парацетамол среди детей мог стать причиной увеличения числа детей , заболевших астмой в течение данного периода .</segment>
+		<group id="15" type="multinuc" parent="23" relname="contrast"/>
+		<group id="14" type="span" parent="9" relname="elaboration"/>
+		<group id="13" type="span" parent="14" relname="span"/>
+		<group id="22" type="multinuc" parent="23" relname="contrast"/>
+		<group id="18" type="span" parent="22" relname="span"/>
+		<group id="21" type="span" parent="18" relname="elaboration"/>
+		<group id="23" type="multinuc"/>
 	</body>
 </rst>

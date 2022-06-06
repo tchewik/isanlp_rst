@@ -1,38 +1,30 @@
-
 """
 BiMPM (Bilateral Multi-Perspective Matching) model implementation.
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, List
 
-from overrides import overrides
 import torch
-import numpy
-
 from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
-from allennlp.modules import FeedForward, Seq2SeqEncoder, Seq2VecEncoder, TextFieldEmbedder
 from allennlp.models.model import Model
-from allennlp.nn import InitializerApplicator, RegularizerApplicator
+from allennlp.modules import FeedForward, Seq2SeqEncoder, Seq2VecEncoder, TextFieldEmbedder
+from allennlp.modules.bimpm_matching import BiMpmMatching
+from allennlp.nn import InitializerApplicator
 from allennlp.nn import util
 from allennlp.training.metrics import CategoricalAccuracy, F1Measure
 
-from allennlp.modules.bimpm_matching import BiMpmMatching
 
-from allennlp.nn.util import get_text_field_mask
-import torch.nn.functional as F
-
-
-@Model.register("custom_bimpm")
 class BiMpm(Model):
     """
-    This ``Model`` augments with additional features the BiMPM model described in `Bilateral Multi-Perspective 
+    This ``Model`` augments with additional features the BiMPM model described in `Bilateral Multi-Perspective
     Matching for Natural Language Sentences <https://arxiv.org/abs/1702.03814>`_ by Zhiguo Wang et al., 2017.
     implemented in https://github.com/galsang/BIMPM-pytorch>`_.
     Additional features are added before the feedforward classifier.
     """
 
-    def __init__(self, vocab: Vocabulary,
+    def __init__(self,
+                 vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
                  matcher_word: BiMpmMatching,
                  encoder1: Seq2SeqEncoder,
@@ -48,8 +40,8 @@ class BiMpm(Model):
                  dropout: float = 0.1,
                  class_weights: list = [],
                  initializer: InitializerApplicator = InitializerApplicator(),
-                 regularizer: Optional[RegularizerApplicator] = None) -> None:
-        super(BiMpm, self).__init__(vocab, regularizer)
+                 **kwargs) -> None:
+        super().__init__(vocab, **kwargs)
 
         self.text_field_embedder = text_field_embedder
 
@@ -96,13 +88,11 @@ class BiMpm(Model):
 
         initializer(self)
 
-    @overrides
-    def forward(self,  # type: ignore
+    def forward(self,
                 premise: Dict[str, torch.LongTensor],
                 hypothesis: Dict[str, torch.LongTensor],
-                same_sentence: List[Dict[str, torch.FloatTensor]],
-                same_paragraph: List[Dict[str, torch.FloatTensor]],
-                #metadata: List[Dict[str, torch.FloatTensor]],
+                same_sentence: List[Dict[str, torch.IntTensor]],
+                same_paragraph: List[Dict[str, torch.IntTensor]],
                 label: torch.LongTensor = None,  # pylint:disable=unused-argument
                 ) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
@@ -201,38 +191,48 @@ class BiMpm(Model):
 
         # the final forward layer
         logits = self.classifier_feedforward(
-            torch.cat([aggregated_premise, 
-                       aggregated_hypothesis, 
-                       encoded_same_sentence, 
+            torch.cat([aggregated_premise,
+                       aggregated_hypothesis,
+                       encoded_same_sentence,
                        encoded_same_paragraph], dim=-1))
-        
+
         probs = torch.nn.functional.softmax(logits, dim=-1)
 
         output_dict = {'logits': logits, "probs": probs}
 
         if label is not None:
             loss = self.loss(logits, label)
-            for metric in self.metrics.values():
-                metric(logits, label)
             output_dict["loss"] = loss
 
+            for metric in self.metrics.values():
+                metric(logits, label)
+
         return output_dict
 
-    @overrides
-    def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def make_output_human_readable(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
-        Converts indices to string labels, and adds a ``"label"`` key to the result.
+        Does a simple argmax over the probabilities, converts index to string label, and
+        add `"label"` key to the dictionary with the result.
         """
-        predictions = output_dict["probs"].cpu().data.numpy()
-        argmax_indices = numpy.argmax(predictions, axis=-1)
-        labels = [self.vocab.get_token_from_index(x, namespace="labels")
-                  for x in argmax_indices]
-        output_dict['label'] = labels
+        predictions = output_dict["probs"]
+        if predictions.dim() == 2:
+            predictions_list = [predictions[i] for i in range(predictions.shape[0])]
+        else:
+            predictions_list = [predictions]
+        classes = []
+        for prediction in predictions_list:
+            label_idx = prediction.argmax(dim=-1).item()
+            label_str = self.vocab.get_index_to_token_vocabulary("labels").get(
+                label_idx, str(label_idx)
+            )
+            classes.append(label_str)
+        output_dict["label"] = classes
         return output_dict
 
-    @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         return {
-            "f1": self.metrics["f1"].get_metric(reset=reset)[2],
-            "accuracy": self.metrics["accuracy"].get_metric(reset=reset)
+            "f1": self.metrics["f1"].get_metric(reset)['f1'],
+            "accuracy": self.metrics["accuracy"].get_metric(reset)
         }
+
+    default_predictor = 'custom_bimpm_predictor'

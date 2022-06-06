@@ -1,35 +1,29 @@
-
 """
 BiMPM (Bilateral Multi-Perspective Matching) model implementation.
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict, List, Any
 
-from overrides import overrides
-import torch
 import numpy
+import torch
 from allennlp.common.checks import check_dimensions_match
 from allennlp.data import Vocabulary
-from allennlp.modules import FeedForward, Seq2SeqEncoder, Seq2VecEncoder, TextFieldEmbedder
 from allennlp.models.model import Model
+from allennlp.modules import FeedForward, Seq2SeqEncoder, Seq2VecEncoder, TextFieldEmbedder
+from allennlp.modules.bimpm_matching import BiMpmMatching
 from allennlp.nn import InitializerApplicator, RegularizerApplicator
 from allennlp.nn import util
 from allennlp.training.metrics import CategoricalAccuracy, F1Measure
 
-from allennlp.modules.bimpm_matching import BiMpmMatching
 
-from allennlp.nn.util import get_text_field_mask
-import torch.nn.functional as F
-
-
-@Model.register("multiclass_bimpm")
 class BiMpm(Model):
     """
-    This ``Model`` augments with additional features the BiMPM model described in `Bilateral Multi-Perspective 
+    This ``Model`` augments with additional features the BiMPM model described in `Bilateral Multi-Perspective
     Matching for Natural Language Sentences <https://arxiv.org/abs/1702.03814>`_ by Zhiguo Wang et al., 2017.
     implemented in https://github.com/galsang/BIMPM-pytorch>`_.
     Additional features are added before the feedforward classifier.
     """
+
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
                  matcher_word: BiMpmMatching,
@@ -41,13 +35,13 @@ class BiMpm(Model):
                  matcher_backward2: BiMpmMatching,
                  aggregator: Seq2VecEncoder,
                  classifier_feedforward: FeedForward,
-                 dropout: float = 0.1,
-                 class_weights: list = [],
                  encode_together: bool = False,
                  encode_lstm: bool = True,
+                 dropout: float = 0.1,
+                 class_weights: list = [],
                  initializer: InitializerApplicator = InitializerApplicator(),
-                 regularizer: Optional[RegularizerApplicator] = None) -> None:
-        super(BiMpm, self).__init__(vocab, regularizer)
+                 **kwargs) -> None:
+        super().__init__(vocab, **kwargs)
 
         self.text_field_embedder = text_field_embedder
 
@@ -62,33 +56,33 @@ class BiMpm(Model):
         self.matcher_backward2 = matcher_backward2
 
         self.aggregator = aggregator
-        
+
         self.encode_together = encode_together
         self.encode_lstm = encode_lstm
-        
+
         matching_dim = self.matcher_word.get_output_dim()
-        
+
         if self.encode_lstm:
             matching_dim += self.matcher_forward1.get_output_dim(
             ) + self.matcher_backward1.get_output_dim(
             ) + self.matcher_forward2.get_output_dim(
             ) + self.matcher_backward2.get_output_dim(
             )
-            
+
         check_dimensions_match(matching_dim, self.aggregator.get_input_dim(),
-                       "sum of dim of all matching layers", "aggregator input dim")
+                               "sum of dim of all matching layers", "aggregator input dim")
 
         self.classifier_feedforward = classifier_feedforward
 
         self.dropout = torch.nn.Dropout(dropout)
-        
+
         if class_weights:
             self.class_weights = class_weights
         else:
             self.class_weights = [1.] * self.classifier_feedforward.get_output_dim()
-            
+
         self.metrics = {"accuracy": CategoricalAccuracy()}
-        
+
         for _class in range(len(self.class_weights)):
             self.metrics.update({
                 f"f1_rel{_class}": F1Measure(_class),
@@ -98,13 +92,12 @@ class BiMpm(Model):
 
         initializer(self)
 
-    @overrides
     def forward(self,  # type: ignore
                 premise: Dict[str, torch.LongTensor],
                 hypothesis: Dict[str, torch.LongTensor],
                 label: torch.LongTensor = None,
                 metadata: List[Dict[str, Any]] = None  # pylint:disable=unused-argument
-               ) -> Dict[str, torch.Tensor]:
+                ) -> Dict[str, torch.Tensor]:
 
         """
         Parameters
@@ -126,25 +119,25 @@ class BiMpm(Model):
         loss : torch.FloatTensor, optional
             A scalar loss to be optimised.
         """
-        
+
         def encode_pair(x1, x2, mask1=None, mask2=None):
             _joined_pair: Dict[str, torch.LongTensor] = {}
-            
+
             for key in premise.keys():
                 bsz = premise[key].size(0)
                 x1_len, x2_len = premise[key].size(1), hypothesis[key].size(1)
                 sep = torch.empty([bsz, 1], dtype=torch.long, device=premise[key].device)
-                sep.data.fill_(0) # 2 is the id for </s>
-                
+                sep.data.fill_(0)  # 2 is the id for </s>
+
                 x = torch.cat([premise[key], hypothesis[key]], dim=1)
                 _joined_pair[key] = x
-                
+
             x_output = self.dropout(self.text_field_embedder(_joined_pair))
             return x_output[:, :x1_len], x_output[:, -x2_len:], mask1, mask2
 
         mask_premise = util.get_text_field_mask(premise)
         mask_hypothesis = util.get_text_field_mask(hypothesis)
-        
+
         if self.encode_together:
             embedded_premise, embedded_hypothesis, _, _ = encode_pair(premise, hypothesis)
         else:
@@ -158,7 +151,7 @@ class BiMpm(Model):
         # embedding and encoding of the hypothesis
         encoded_hypothesis1 = self.dropout(self.encoder1(embedded_hypothesis, mask_hypothesis))
         encoded_hypothesis2 = self.dropout(self.encoder2(encoded_hypothesis1, mask_hypothesis))
-        
+
         matching_vector_premise: List[torch.Tensor] = []
         matching_vector_hypothesis: List[torch.Tensor] = []
 
@@ -194,16 +187,12 @@ class BiMpm(Model):
         aggregated_premise = self.dropout(self.aggregator(matching_vector_cat_premise, mask_premise))
         aggregated_hypothesis = self.dropout(self.aggregator(matching_vector_cat_hypothesis, mask_hypothesis))
 
-        # encode additional information
-        #batch_size, _ = aggregated_premise.size()
-        #encoded_meta = metadata.float().view(batch_size, -1)
-        
         # the final forward layer
         logits = self.classifier_feedforward(torch.cat([aggregated_premise, aggregated_hypothesis], dim=-1))
         probs = torch.nn.functional.softmax(logits, dim=-1)
 
         output_dict = {'logits': logits, "probs": probs}
-        
+
         if label is not None:
             loss = self.loss(logits, label)
             for metric in self.metrics.values():
@@ -212,8 +201,7 @@ class BiMpm(Model):
 
         return output_dict
 
-    @overrides
-    def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def make_output_human_readable(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """
         Converts indices to string labels, and adds a ``"label"`` key to the result.
         """
@@ -224,14 +212,13 @@ class BiMpm(Model):
         output_dict['label'] = labels
         return output_dict
 
-    @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         metrics = {"accuracy": self.metrics["accuracy"].get_metric(reset=reset)}
-        
+
         for _class in range(len(self.class_weights)):
             metrics.update({
-                f"f1_rel{_class}": self.metrics[f"f1_rel{_class}"].get_metric(reset=reset)[2],
+                f"f1_rel{_class}": self.metrics[f"f1_rel{_class}"].get_metric(reset=reset)['f1'],
             })
-        
+
         metrics["f1_macro"] = numpy.mean([metrics[f"f1_rel{_class}"] for _class in range(len(self.class_weights))])
         return metrics
