@@ -24,7 +24,7 @@ class RSTTreePredictor:
 
         self.DEFAULT_RELATION = 'joint_NN'
 
-        self._penalty_words = ['новость :', 'культура :', 'http']
+        self._penalty_words = []
 
     def _find_penalty_words(self, span, _penalty=0.5):
         if len(span.split()) > 100:
@@ -33,10 +33,10 @@ class RSTTreePredictor:
         for word in self._penalty_words:
             if word in span.lower():
                 return _penalty
-            
+
         for word in ['.', '?', '!']:
             return _penalty / 2.
-            
+
         return 0
 
 
@@ -143,6 +143,8 @@ class CustomTreePredictor(RSTTreePredictor):
         pair = pd.DataFrame({
             'snippet_x': [left_node.text.strip()],
             'snippet_y': [right_node.text.strip()],
+            'loc_x': [left_node.start],
+            'loc_y': [right_node.start]
         })
 
         try:
@@ -150,7 +152,11 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_tokens=annot_tokens, annot_sentences=annot_sentences,
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
+            if 'index' in features.keys():
+                del features['index']
+
             return features
+
         except:
             with open('errors.log', 'w+') as f:
                 f.write(str(pair.values))
@@ -162,7 +168,9 @@ class CustomTreePredictor(RSTTreePredictor):
                             annot_syntax_dep_tree):
         pairs = pd.DataFrame({
             'snippet_x': [node.text.strip() for node in nodes[:-1]],
-            'snippet_y': [node.text.strip() for node in nodes[1:]]
+            'snippet_y': [node.text.strip() for node in nodes[1:]],
+            'loc_x': [node.start for node in nodes[:-1]],
+            'loc_y': [node.start for node in nodes[1:]]
         })
 
         try:
@@ -170,7 +178,11 @@ class CustomTreePredictor(RSTTreePredictor):
                                                annot_tokens=annot_tokens, annot_sentences=annot_sentences,
                                                annot_postag=annot_postag, annot_morph=annot_morph,
                                                annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
+            if 'index' in features.keys():
+                del features['index']
+
             return features
+
         except IndexError:
             with open('feature_extractor_errors.log', 'w+') as f:
                 f.write(str(pairs.values))
@@ -240,6 +252,8 @@ class NNTreePredictor(CustomTreePredictor):
         pair = pd.DataFrame({
             'snippet_x': [left_node.text.strip()],
             'snippet_y': [right_node.text.strip()],
+            'loc_x': [left_node.start],
+            'loc_y': [right_node.start]
         })
 
         features = self.features_processor(pair, annot_text=annot_text,
@@ -247,8 +261,13 @@ class NNTreePredictor(CustomTreePredictor):
                                            annot_postag=annot_postag, annot_morph=annot_morph,
                                            annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
 
-        features['snippet_x'] = features['tokens_x'].map(lambda row: ' '.join(row)).values
-        features['snippet_y'] = features['tokens_y'].map(lambda row: ' '.join(row)).values
+        if 'index' in features.keys():
+            del features['index']
+
+        features['snippet_x'] = features['snippet_x_tokens'].map(
+            lambda row: ' '.join([token.text for token in row])).values
+        features['snippet_y'] = features['snippet_y_tokens'].map(
+            lambda row: ' '.join([token.text for token in row])).values
 
         return features
 
@@ -256,11 +275,15 @@ class NNTreePredictor(CustomTreePredictor):
                             annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                             annot_syntax_dep_tree):
         features = super().initialize_features(nodes,
-                                               annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph,
-                                               annot_postag,
-                                               annot_syntax_dep_tree)
-        features['snippet_x'] = features['tokens_x'].map(lambda row: ' '.join(row)).values
-        features['snippet_y'] = features['tokens_y'].map(lambda row: ' '.join(row)).values
+                                               annot_text=annot_text,
+                                               annot_tokens=annot_tokens, annot_sentences=annot_sentences,
+                                               annot_postag=annot_postag, annot_morph=annot_morph,
+                                               annot_lemma=annot_lemma, annot_syntax_dep_tree=annot_syntax_dep_tree)
+
+        features['snippet_x'] = features['snippet_x_tokens'].map(
+            lambda row: ' '.join([token.text for token in row])).values
+        features['snippet_y'] = features['snippet_y_tokens'].map(
+            lambda row: ' '.join([token.text for token in row])).values
 
         return features
 
@@ -324,8 +347,10 @@ class LargeNNTreePredictor(NNTreePredictor):
             probas_text_level = self.relation_predictor_text.predict_proba_batch(
                 features['snippet_x'].values.tolist(),
                 features['snippet_y'].values.tolist(),
-                features['same_sentence'].map(str).values.tolist(),
-                features['same_paragraph'].map(str).values.tolist())
+                # features['same_sentence'].map(str).values.tolist(),
+                # features['same_paragraph'].map(str).values.tolist())
+                features['at_paragraph_start_x'].map(str).values.tolist(),
+                features['at_paragraph_start_y'].map(str).values.tolist())
 
             sentence_level_map = list(map(float, list(features['same_sentence'] == 1)))
 
@@ -335,18 +360,18 @@ class LargeNNTreePredictor(NNTreePredictor):
         if type(features) == pd.Series:
             return self.relation_predictor_text.predict_proba(features.loc['snippet_x'],
                                                               features.loc['snippet_y'],
-                                                              str(features.loc['same_sentence'],
-                                                                  str(features.loc['same_paragraph'])))[0][1] + (
+                                                              str(features.loc['at_paragraph_start_x']),
+                                                              str(features.loc['at_paragraph_start_y']))[0][1] + (
                            features.loc['same_sentence'] == 1) * _same_sentence_bonus
 
         if type(features) == list:
             snippet_x = [feature['snippet_x'] for feature in features]
             snippet_y = [feature['snippet_y'] for feature in features]
-            same_sentence = [feature['same_sentence'].map(str) for feature in features]
-            same_paragraph = [feature['same_paragraph'].map(str) for feature in features]
+            at_paragraph_start_x = [feature['at_paragraph_start_x'].map(str) for feature in features]
+            at_paragraph_start_y = [feature['at_paragraph_start_y'].map(str) for feature in features]
 
-            probas = self.relation_predictor_text.predict_proba_batch(snippet_x, snippet_y, same_sentence,
-                                                                      same_paragraph)
+            probas = self.relation_predictor_text.predict_proba_batch(snippet_x, snippet_y, at_paragraph_start_x,
+                                                                      at_paragraph_start_y)
             sentence_level_map = list(map(float, [feature['same_sentence'] == 1 for feature in features]))
 
             return [probas[i][1] + sentence_level_map[i] for i in range(len(probas))]
@@ -468,41 +493,35 @@ class DoubleEnsembleNNTreePredictor(EnsembleNNTreePredictor):
             probas_text_level = self.relation_predictor_text.predict_proba_batch(
                 snippet_x=features['snippet_x'].values.tolist(),
                 snippet_y=features['snippet_y'].values.tolist(),
-                same_sentence=features['same_sentence'].map(str).values.tolist(),
-                same_paragraph=features['same_paragraph'].map(str).values.tolist(),
+                same_sentence=features['at_paragraph_start_x'].map(str).values.tolist(),
+                same_paragraph=features['at_paragraph_start_y'].map(str).values.tolist(),
                 features=features)
 
             # plus bonus for the presense in the same sentence
             sentence_level_map = list(map(float, list(features['same_sentence'] == 1)))
 
-            # minus penalty for the depricated words
-            keywords_penalty = list(
-                map(float, list(features['snippet_x'].map(lambda row: self._find_penalty_words(row)))))
-
-            return [probas_text_level[i][1] + _same_sentence_bonus * sentence_level_map[i] - keywords_penalty[i] for i
-                    in
+            return [probas_text_level[i][1] + _same_sentence_bonus * sentence_level_map[i] for i in
                     range(len(probas_text_level))]
 
         if type(features) == pd.Series:
-            return self.relation_predictor_text.predict_proba(snippet_x=features.loc['snippet_x'],
-                                                              snippet_y=features.loc['snippet_y'],
-                                                              same_sentence=str(features.loc['same_sentence'],
-                                                                                same_paragraph=str(
-                                                                                    features.loc['same_paragraph'],
-                                                                                    features=features)))[0][1] + (
-                           features.loc['same_sentence'] == 1) * _same_sentence_bonus
+            return self.relation_predictor_text.predict_proba(
+                snippet_x=features.loc['snippet_x'],
+                snippet_y=features.loc['snippet_y'],
+                same_sentence=str(features.loc['at_paragraph_start_x']),
+                same_paragraph=str(features.loc['at_paragraph_start_y']),
+                features=features)[0][1] + (features.loc['same_sentence'] == 1) * _same_sentence_bonus
 
         if type(features) == list:
             snippet_x = [feature['snippet_x'] for feature in features]
             snippet_y = [feature['snippet_y'] for feature in features]
-            same_sentence = [feature['same_sentence'].map(str) for feature in features]
-            same_paragraph = [feature['same_paragraph'].map(str) for feature in features]
+            at_paragraph_start_x = [feature['at_paragraph_start_x'].map(str) for feature in features]
+            at_paragraph_start_y = [feature['at_paragraph_start_y'].map(str) for feature in features]
 
             probas = self.relation_predictor_text.predict_proba_batch(
                 snippet_x=snippet_x,
                 snippet_y=snippet_y,
-                same_sentence=same_sentence,
-                same_paragraph=same_paragraph,
+                same_sentence=at_paragraph_start_x,
+                same_paragraph=at_paragraph_start_y,
                 features=features)
 
             sentence_level_map = list(map(float, [feature['same_sentence'] == 1 for feature in features]))
@@ -514,4 +533,3 @@ class TopDownRSTPredictor:
     def __init__(self, features_processor, label_predictor):
         self.features_processor = features_processor
         self.label_predictor = label_predictor
-

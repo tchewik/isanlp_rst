@@ -1,10 +1,13 @@
-import segmenters as sgm
+import cky_rst_parser
 import classifier_wrappers as clf
 import features_processors as feat
-import greedy_rst_parser, topdown_rst_parser, cky_rst_parser
-from isanlp.annotation import Sentence
-import rst_tree_predictors as treep
+import greedy_rst_parser
 import os
+import segmenters as sgm
+import topdown_rst_parser
+from isanlp.annotation import Sentence
+
+import rst_tree_predictors as treep
 
 # Segmenter: (class, directory)
 _SEGMENTER = {
@@ -14,25 +17,34 @@ _SEGMENTER = {
 # Feature processing: class
 _FEATURE_PROCESSOR = {
     'neural': feat.FeaturesProcessorTokenizer,
-    'baseline': feat.FeaturesProcessor,
+    'featurerich': feat.FeaturesProcessor,
 }
 
 # Bottom-up tree prediction: (class, directory, paragraph probability threshold, document probability threshold)
 _SPAN_PREDICTOR = {
-    'neural': (clf.AllenNLPCustomBiMPMClassifier, 'structure_predictor_bimpm/elmo_ft', 0., 0.6),
-    'baseline': (clf.SklearnClassifier, 'structure_predictor_baseline', 0.15, 0.2),
-    'ensemble': (clf.EnsembleClassifier, '', 0., 0.7)  # 0., 0.6
+    'neural': (clf.AllenNLPCustomBiMPMClassifier, os.path.join('structure_predictor_bimpm', 'elmo_ft'), 0., 0.6),
+    'featurerich': (clf.SklearnClassifier, 'structure_predictor_featurerich', 0.15, 0.2),
+    'ensemble': (clf.EnsembleClassifier, '', 0., 0.961)
 }
-_SPAN_PREDICTOR_ENSEMBLE_WEIGHTS = {'baseline': .8, 'neural': .9}
+
+_SPAN_PREDICTOR_ENSEMBLE_PARAMS = {
+    'ru': {'voting_type': 'stacking',
+           'stacking_model_name': 'structure_ensemble.pkl'},
+    'en': {},
+}
 
 # Relation classification: (class, directory)
 _LABEL_PREDICTOR = {
-    'neural': (clf.AllenNLPBiMPMClassifier, 'label_predictor_bimpm/elmo_ft'),
-    'baseline': (clf.SklearnClassifier, 'label_predictor_baseline'),
+    'neural': (clf.AllenNLPBiMPMClassifier, os.path.join('label_predictor_bimpm', 'elmo_ft')),
+    'featurerich': (clf.SklearnClassifier, 'label_predictor_featurerich'),
     'ensemble': (clf.EnsembleClassifier,)
 }
 
-_LABEL_PREDICTOR_ENSEMBLE_WEIGHTS = {'baseline': .8, 'neural': .3}
+_LABEL_PREDICTOR_ENSEMBLE_PARAMS = {
+    'ru': {'voting_type': 'stacking',
+           'stacking_model_name': 'relation_ensemble.pkl'},
+    'en': {},
+}
 
 # Tree prediction (SpanPredictorType_RelationPredictorType): class
 _TREE_PREDICTOR = {
@@ -50,87 +62,127 @@ _PARSER = {
 
 
 class ProcessorRST:
-    def __init__(self, model_dir_path, segmenter_type='lstm', span_predictor_type='baseline',
-                 label_predictor_type='baseline', add_document_parser=False):
+    def __init__(self, model_dir_path, language='ru',
+                 segmenter_type='lstm', span_predictor_type='featurerich', label_predictor_type='featurerich',
+                 fully_connected=False, add_document_parser=False):
 
-        self._model_dir_path = model_dir_path
+        self._model_dir_path = os.path.join(model_dir_path, language)
+        self._language = language
+        self._fully_connected = fully_connected
 
+        # Initialize segmenter
         self.segmenter = _SEGMENTER[segmenter_type][0](self._model_dir_path, _SEGMENTER[segmenter_type][1])
 
+        # Initialize feature processor
         _features_type = sorted([span_predictor_type, label_predictor_type])[0]
-        _features_type = 'baseline' if _features_type == 'ensemble' else _features_type
-        self._features_processor = _FEATURE_PROCESSOR[_features_type](self._model_dir_path)
+        _features_type = 'featurerich' if _features_type == 'ensemble' else _features_type
+        self._features_processor = _FEATURE_PROCESSOR[_features_type](language=self._language, verbose=0)
 
-        self._span_predictor_sentence = None
+        # Initialize bottom-up greedy structure predictor (if necessary)
+        if not self._fully_connected:
+            if span_predictor_type in ['featurerich', 'neural']:
+                self._span_predictor_text = _SPAN_PREDICTOR[span_predictor_type][0](
+                    model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[span_predictor_type][1]))
+            elif span_predictor_type == 'ensemble':
+                types = ['featurerich', 'neural']
+                _span_classifiers = []
+                for _type in types:
+                    _span_classifiers.append(
+                        _SPAN_PREDICTOR[_type][0](
+                            model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[_type][1])))
 
-        if span_predictor_type != 'ensemble':
-            self._span_predictor_text = _SPAN_PREDICTOR[span_predictor_type][0](
-                model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[span_predictor_type][1]))
-        else:
-            _span_classifiers = []
+                self._span_predictor_text = _SPAN_PREDICTOR['ensemble'][0](
+                    _span_classifiers, model_path=self._model_dir_path,
+                    **_SPAN_PREDICTOR_ENSEMBLE_PARAMS[self._language])
 
-            for _type in ('baseline', 'neural'):
-                _span_classifiers.append(
-                    _SPAN_PREDICTOR[_type][0](
-                        model_dir_path=os.path.join(self._model_dir_path, _SPAN_PREDICTOR[_type][1])
-                    )
-                )
-
-            self._span_predictor_text = _SPAN_PREDICTOR['ensemble'][0](
-                models=_span_classifiers, weights=[.8, .9]
-            )
-
-        if label_predictor_type != 'ensemble':
+        # Initialize relation type + nuclearity predictor
+        if label_predictor_type in ['featurerich', 'neural']:
             self._label_predictor = _LABEL_PREDICTOR[label_predictor_type][0](
                 model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[label_predictor_type][1]))
-        else:
+        elif label_predictor_type == 'ensemble':
+            types = ['featurerich', 'neural']
             _label_classifiers = []
-
-            for _type in ('baseline', 'neural'):
+            for _type in types:
                 _label_classifiers.append(
                     _LABEL_PREDICTOR[_type][0](
-                        model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[_type][1])
-                    )
-                )
+                        model_dir_path=os.path.join(self._model_dir_path, _LABEL_PREDICTOR[_type][1])))
 
             self._label_predictor = _LABEL_PREDICTOR['ensemble'][0](
-                _label_classifiers, weights=[.8, .3]
-            )
+                _label_classifiers, model_path=self._model_dir_path,
+                **_LABEL_PREDICTOR_ENSEMBLE_PARAMS[self._language])
 
-        self._nuclearity_predictor = None
-        _span_typename = span_predictor_type if span_predictor_type != 'baseline' else 'ensemble'
-        _label_typename = label_predictor_type if label_predictor_type != 'baseline' else 'ensemble'
-
+        # Initialize TreePredictor object containing all the required classifiers and feature processors
+        _span_typename = span_predictor_type if span_predictor_type != 'featurerich' else 'ensemble'
+        _label_typename = label_predictor_type if label_predictor_type != 'featurerich' else 'ensemble'
         self._tree_predictor = _TREE_PREDICTOR['_'.join([_span_typename, _label_typename])](
             features_processor=self._features_processor,
-            relation_predictor_sentence=self._span_predictor_sentence,
+            relation_predictor_sentence=None,
             relation_predictor_text=self._span_predictor_text,
             label_predictor=self._label_predictor,
-            nuclearity_predictor=self._nuclearity_predictor)
+            nuclearity_predictor=None)
 
-        self.paragraph_parser = _PARSER['top_down'](self._tree_predictor,
-                                                    trained_model_path='models/topdown_model/model.pt')
-        self.document_parser = _PARSER['greedy_bottom_up'](self._tree_predictor,
-                                                           confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
-                                                           _same_sentence_bonus=0.)
+        # Initialize a single top-down or both top-down and bottom-up parsers
+        if self._fully_connected:
+            self.document_parser = _PARSER['top_down'](
+                self._tree_predictor, trained_model_path=os.path.join(self._model_dir_path, 'topdown_model.pt'))
+        else:
+            self.paragraph_parser = _PARSER['top_down'](
+                self._tree_predictor, trained_model_path=os.path.join(self._model_dir_path, 'topdown_model.pt'))
+            self.document_parser = _PARSER['greedy_bottom_up'](
+                self._tree_predictor, confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3],
+                _same_sentence_bonus=0.)
 
-        self.AVG_TREE_LENGTH = 100  # Varies in different genres (96-116), roughly assuming that's 100 tokens per tree
-        self.additional_document_parser = _PARSER['greedy_bottom_up'](
-            self._tree_predictor,
-            confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15,
-            _same_sentence_bonus=0.) if add_document_parser else None
-
-        self._possible_missegmentations = ()  # Here were the examples of inconsistency between sources and annotation
+            self.AVG_TREE_LENGTH = 100  # Varies in different genres (96-116), roughly assuming that's 100 tokens per tree
+            self.additional_document_parser = _PARSER['greedy_bottom_up'](
+                self._tree_predictor, confidence_threshold=_SPAN_PREDICTOR[span_predictor_type][3] - 0.15,
+                _same_sentence_bonus=0.) if add_document_parser else None
 
     def __call__(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
 
+        if self._fully_connected:
+            return self.parse_fully_connected(annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph,
+                                              annot_postag, annot_syntax_dep_tree)
+        else:
+            return self.parse_partly_annotated(annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph,
+                                               annot_postag, annot_syntax_dep_tree)
+
+    def parse_fully_connected(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                              annot_syntax_dep_tree):
+
+        if '\n' in annot_text:
+            chunks = self.split_by_paragraphs(
+                annot_text=annot_text,
+                annot_tokens=annot_tokens,
+                annot_lemma=annot_lemma,
+                annot_morph=annot_morph,
+                annot_postag=annot_postag,
+                annot_syntax_dep_tree=annot_syntax_dep_tree)
+
+            edus = []
+            for chunk in chunks:
+                chunk_edus = self.segmenter(annot_text, chunk['tokens'], chunk['sentences'], chunk['lemma'],
+                                            chunk['postag'], chunk['syntax_dep_tree'], start_id=start_id)
+                edus += chunk_edus
+
+        else:
+            edus = self.segmenter(annot_text, annot_tokens, annot_sentences, annot_lemma, annot_postag,
+                                  annot_syntax_dep_tree, start_id=start_id)
+
+        if len(edus) == 1:
+            return edus
+
+        trees = self.document_parser(edus, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph,
+                                     annot_postag, annot_syntax_dep_tree)
+
+        return [ProcessorRST.merge_terminal_sameunits(tree, annot_text) for tree in trees]
+
+    def parse_partly_annotated(self, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
+                               annot_syntax_dep_tree):
+
         # 1. Split text and annotations on paragraphs and process separately
         dus = []
         start_id = 0
-
-        for missegmentation in self._possible_missegmentations:
-            annot_text = annot_text.replace(missegmentation, ' ' + missegmentation[1:])
 
         if '\n' in annot_text:
             chunks = self.split_by_paragraphs(
@@ -182,7 +234,7 @@ class ProcessorRST:
                         annot_syntax_dep_tree
                     )
 
-            return trees
+            return [ProcessorRST.merge_terminal_sameunits(tree, annot_text) for tree in trees]
 
         else:
             edus = self.segmenter(annot_text, annot_tokens, annot_sentences, annot_lemma,
@@ -194,7 +246,7 @@ class ProcessorRST:
             trees = self.paragraph_parser(edus, annot_text, annot_tokens, annot_sentences, annot_lemma,
                                           annot_morph, annot_postag, annot_syntax_dep_tree)
 
-            return trees
+            return [ProcessorRST.merge_terminal_sameunits(tree, annot_text) for tree in trees]
 
     def split_by_paragraphs(self, annot_text, annot_tokens, annot_lemma, annot_morph, annot_postag,
                             annot_syntax_dep_tree):
@@ -278,3 +330,23 @@ class ProcessorRST:
 
         chunks.append(recount_sentences(chunk))
         return chunks
+
+    @staticmethod
+    def merge_terminal_sameunits(tree, text):
+        if tree.relation == 'elementary':
+            return tree
+
+        if tree.relation == 'same-unit':
+            if tree.left.relation == 'elementary' and tree.right.relation == 'elementary':
+                tree.relation = 'elementary'
+                tree.start = tree.left.start
+                tree.end = tree.right.end
+                tree.proba = 1.
+                tree.text = text[tree.start:tree.end]
+                tree.left = None
+                tree.right = None
+                return tree
+
+        tree.left = ProcessorRST.merge_terminal_sameunits(tree.left, text)
+        tree.right = ProcessorRST.merge_terminal_sameunits(tree.right, text)
+        return tree

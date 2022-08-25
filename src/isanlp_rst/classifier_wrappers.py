@@ -1,14 +1,13 @@
-import os
-import pickle
-
 import numpy as np
+import os
 import pandas as pd
+import pickle
 from allennlp.predictors import Predictor
 from models.bimpm_custom_package.model.custom_bimpm_predictor import CustomBiMPMPredictor
-
 from symbol_map import SYMBOL_MAP
 
 MAX_ALLOWED_LEN = 5000
+
 
 
 class SimpleAllenNLPClassifier:
@@ -335,8 +334,7 @@ class AllenNLPContextualBiMPMClassifier(SimpleAllenNLPClassifier):
 
 
 class SklearnClassifier:
-    """
-    Wrapper for sklearn/catboost classification model along with preprocessors, saved in the same directory:
+    """ Wrapper for sklearn/catboost classification model along with preprocessors, saved in the same directory:
         [required]
         - model.pkl            : trained model
         [optional]
@@ -477,52 +475,68 @@ class EnsembleClassifier:
     Wrapper for voting ensemble
     """
 
-    def __init__(self, models, voting_type='soft', weights=[1., 1.]):
+    def __init__(self, models, voting_type='soft',
+                 model_path='models', stacking_model_name='',
+                 weights=[1., 1.]):
         """
-        :param models: list of initialized models
-        :param voting_type: type of voting {soft|hard}
+        Args:
+            models (list[Object]): list of initialized models
+            voting_type (str): type of voting. Available types: {soft|hard|stacking}
+            weights (list[int]): weights of the underlying models predictions (for voting_type='soft')
+            model_path (str): directory containing all the models (for voting_type='stacking')
+            stacking_model_name (str): name of the pickled stacking model (for voting_type='stacking')
         """
         for i in range(1, len(models)):
             assert set(models[i].labels) == set(models[i - 1].labels)
 
         self.models = models
         self.labels = models[0].labels
-
         self.voting_type = voting_type
-        self.voting_weights = weights
-        # self.vote = np.max if self.voting_type == 'hard' else np.average
 
-    def blend_predictions(self, predictions):
-        return np.dot(predictions, self.voting_weights) / len(self.voting_weights)
+        self.voting_weights = weights if voting_type == 'soft' else None
+        self.stacker = pickle.load(
+            open(os.path.join(model_path, stacking_model_name), 'rb')) if voting_type == 'stacking' else None
 
-    def vote_predictions(self, predictions):
-        pred1, pred2 = predictions
-        assert len(pred1) == len(pred2)
+    def _vote_predictions(self, predictions):
+        for i in range(len(predictions) - 1):
+            assert len(predictions[i]) == len(predictions[i + 1])
 
         result = []
-        for i in range(len(pred1)):
+        for i in range(len(predictions[0])):
             sample_result = {}
-            for key in pred1[i].keys():
+            for key in predictions[0][i].keys():
                 if self.voting_type == 'soft':
-                    sample_result[key] = (pred1[i][key] * self.voting_weights[0] + pred2[i][key] * self.voting_weights[
-                        1]) / 2.
-                else:
-                    sample_result[key] = max(pred1[i][key], pred2[i][key])
+                    preds_key = np.stack([prediction[i][key] for prediction in predictions])
+                    sample_result[key] = preds_key.T @ self.voting_weights
+                elif self.voting_type == 'hard':
+                    sample_result[key] = max([prediction[i][key] for prediction in predictions])
 
             result.append(sample_result)
 
         return result
 
+    def _stack_predictions(self, predictions):
+        featurerich, neural = predictions
+        assert len(featurerich) == len(neural)
+
+        X_stacking = pd.concat([pd.DataFrame(neural).add_prefix('neural_'),
+                                pd.DataFrame(featurerich).add_prefix('catb_')], axis=1)
+        probas = self.stacker.predict_proba(X_stacking)
+        stacker_pred = [dict(zip(map(str, self.stacker.classes_), p)) for p in probas]
+        return stacker_pred
+
     def predict_proba(self, snippet_x, snippet_y, features, *args, **kwargs):
         results = []
 
         for model in self.models:
-            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features, *args,
-                                                    **kwargs)
+            sample_prediction = model.predict_proba(snippet_x=snippet_x, snippet_y=snippet_y, features=features,
+                                                    *args, **kwargs)
 
             results.append([dict(zip(model.labels, sample_prediction))])
 
-        ensembled_result = self.vote_predictions(results)[0]
+        ensembled_result = self._vote_predictions(results)[0] if self.voting_type in ['soft', 'hard'] \
+            else self._stack_predictions(results)[0]
+
         return [ensembled_result[key] for key in self.labels]
 
     def predict_proba_batch(self, snippet_x, snippet_y, features, *args, **kwargs):
@@ -538,7 +552,9 @@ class EnsembleClassifier:
 
             results.append(annot_predictions)
 
-        ensembled_result = self.vote_predictions(results)
+        ensembled_result = self._vote_predictions(results) if self.voting_type in ['soft', 'hard'] \
+            else self._stack_predictions(results)
+
         return [[sample_result[key] for key in self.labels] for sample_result in ensembled_result]
 
     def predict(self, snippet_x, snippet_y, features, *args, **kwargs):

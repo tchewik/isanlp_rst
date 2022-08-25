@@ -1,11 +1,10 @@
-import os
-
 import numpy as np
+import os
+import torch
+from allennlp.data.tokenizers.whitespace_tokenizer import WhitespaceTokenizer
 from allennlp.predictors import Predictor
 from isanlp.annotation_rst import DiscourseUnit
 from symbol_map import SYMBOL_MAP
-from allennlp.data.tokenizers.whitespace_tokenizer import WhitespaceTokenizer
-import torch
 
 
 class AllenNLPSegmenter:
@@ -27,7 +26,11 @@ class AllenNLPSegmenter:
 
     def _predict(self, tokens, sentences):
         """
-        :return: numbers of tokens predicted as EDU left boundaries
+        Args:
+            tokens (list[isanlp.annotation.Token]): input tokens
+            sentences (list[isanlp.annotation.Span]): input sentences
+        Returns:
+            list[int]: positions of tokens predicted as EDU left boundaries
         """
         _sentences = []
         for sentence in sentences:
@@ -46,13 +49,7 @@ class AllenNLPSegmenter:
                 pred = np.array(prediction['tags'][:sentences[i].end - sentences[i].begin]) == self._separator
 
             # The first token in a sentence is a separator
-            # if it is not a point in a list
-            if len(pred) > 0:
-                if i > 0:
-                    if predictions[i - 1]['words'][1] == '.' and predictions[i - 1]['words'][0] in "0123456789":
-                        pred[0] = False
-                else:
-                    pred[0] = True
+            pred[0] = True
 
             # No single-token EDUs
             for j, token in enumerate(pred[:-1]):
@@ -68,10 +65,12 @@ class AllenNLPSegmenter:
 
     def _build_discourse_units(self, text, tokens, numbers, start_id):
         """
-        :param text: original text
-        :param list tokens: isanlp.annotation.Token
-        :param numbers: positions of tokens predicted as EDU left boundaries (beginners)
-        :return: list of DiscourseUnit
+        Args:
+            text (str): original text
+            tokens (list[isanlp.annotation.Token]): tokens from the annotation
+            numbers (list[int]): positions of tokens predicted as EDU left boundaries (beginners)
+        Returns:
+            list[isanlp.annotation_rst.DiscourseUnit]: final predicted elementary discourse units
         """
 
         edus = []
@@ -104,7 +103,7 @@ class AllenNLPSegmenter:
         for key, value in self._symbol_map.items():
             token = token.replace(key, value)
 
-        for keyword in ['www', 'http']:
+        for keyword in ['www', 'http', 'html']:
             if keyword in token:
                 return '_html_'
 

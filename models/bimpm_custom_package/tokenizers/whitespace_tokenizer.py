@@ -1,7 +1,5 @@
 from typing import List
-
 from allennlp.data.tokenizers import Token, Tokenizer
-from overrides import overrides
 
 
 @Tokenizer.register("whitespace_tokenizer")
@@ -15,7 +13,6 @@ class WhitespaceTokenizer(Tokenizer):
             return [Token(token) for token in text.split()][:self.max_length]
         return [Token(token) for token in text.split()]
 
-    @overrides
     def tokenize(self, text: str) -> List[Token]:
         tokens = self._tokenize(text)
 

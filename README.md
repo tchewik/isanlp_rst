@@ -1,4 +1,4 @@
-![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg)
+![Python 3.8](https://img.shields.io/badge/python-3.8-green.svg)
 
 # IsaNLP RST Parser
 
@@ -17,8 +17,8 @@ pip install git+https://github.com/IINemo/isanlp.git
 2. Deploy docker containers for syntax and discourse parsing:
 
 ```
-docker run --rm -p 3334:3333 inemo/isanlp_udpipe
-docker run --rm -p 3335:3333 tchewik/isanlp_rst
+docker run --rm -d -p 3334:3333 --name spacy_ru tchewik/isanlp_spacy:ru
+docker run --rm -d -p 3335:3333 --name rst_ru tchewik/isanlp_rst:2.1-rstreebank
 ```  
 
 3. Connect from python using `PipelineCommon`:
@@ -26,68 +26,53 @@ docker run --rm -p 3335:3333 tchewik/isanlp_rst
 ```python
 from isanlp import PipelineCommon
 from isanlp.processor_remote import ProcessorRemote
-from isanlp.ru.processor_mystem import ProcessorMystem
-from isanlp.ru.converter_mystem_to_ud import ConverterMystemToUd
+from isanlp.processor_razdel import ProcessorRazdel
 
+# put the address here ->
+address_syntax = ('', 3334)
+address_rst = ('', 3335)
 
-def tokenize(text):
-    """ Tokenize text, but keep paragraph boundaries. """
-
-    while '\n\n' in text:
-        text = text.replace('\n\n', '\n')
-    result = []
-    for paragraph in text.split('\n'):
-        result.append(' '.join([tok.text for tok in razdel.tokenize(paragraph)]))
-    return '\n'.join(result).strip()
-
-
-ppl = PipelineCommon([
-    (ProcessorRemote('localhost', 3334, '0'),
-     ['text'],
-     {'sentences': 'sentences',
-      'tokens': 'tokens',
-      'lemma': 'lemma',
-      'syntax_dep_tree': 'syntax_dep_tree',
-      'postag': 'ud_postag'}),
-    (ProcessorMystem(delay_init=False),
+ppl_ru = PipelineCommon([
+    (ProcessorRazdel(), ['text'],
+     {'tokens': 'tokens',
+      'sentences': 'sentences'}),
+    (ProcessorRemote(address_syntax[0], address_syntax[1], '0'),
      ['tokens', 'sentences'],
-     {'postag': 'postag'}),
-    (ConverterMystemToUd(),
-     ['postag'],
-     {'morph': 'morph',
+     {'lemma': 'lemma',
+      'morph': 'morph',
+      'syntax_dep_tree': 'syntax_dep_tree',
       'postag': 'postag'}),
-    (ProcessorRemote('localhost', 3335, 'default'),
+    (ProcessorRemote(address_rst[0], address_rst[1], 'default'),
      ['text', 'tokens', 'sentences', 'postag', 'morph', 'lemma', 'syntax_dep_tree'],
      {'rst': 'rst'})
 ])
 
-text = tokenize("Парацетамол (известный в Соединённых Штатах как ацетаминофен) – одно из самых распространённых "
-        "лекарств в мире. Из-за своей безопасности он является предпочтительным препаратом для снятия жара "
-        "и болевых синдромов. Однако 10 лет назад была высказана гипотеза о том, что использование "
-        "парацетамола может увеличить риск развития астмы. Высказывалось предположение, что переход в США "
-        "в 80-х гг. с применения аспирина на парацетамол среди детей мог стать причиной увеличения числа детей, "
-        "заболевших астмой в течение данного периода.")
+text = ("Парацетамол является широко распространённым центральным ненаркотическим анальгетиком, обладает довольно "
+        "слабыми противовоспалительными свойствами. Вместе с тем при приёме больших доз может вызывать нарушения "
+        "работы печени, кровеносной системы и почек. Риски нарушений работы данных органов и систем "
+        "увеличивается при одновременном принятии спиртного, поэтому лицам, употребляющим алкоголь, рекомендуют "
+        "употреблять пониженную дозу парацетамола.")
 
-res = ppl(text)
+res = ppl_ru(text)
 ```   
 
 4. The `res` variable should contain all annotations including RST annotations stored in `res['rst']`; each tree
    anotation in list represents one or more paragraphs of the given text.
 
 ```
-{'text': 'Новости о грядущей эмиссии ...',
- 'sentences': [<isanlp.annotation.Sentence at 0x7f833dee07d0>, ...],
+{'text': 'Парацетамол является широко распространённым ...',
  'tokens': [<isanlp.annotation.Token at 0x7f833dee0910>, ...],
- 'lemma': [['новость', ...], ...],
+ 'sentences': [<isanlp.annotation.Sentence at 0x7f833dee07d0>, ...],
+ 'lemma': [['парацетамол', 'являться', ...], ...],
+ 'morph': [[{'Animacy': 'Inan', 'Case': 'Nom', ...}, ...], ...],
  'syntax_dep_tree': [[<isanlp.annotation.WordSynt at 0x7f833deddc10>, ...], ...],
- 'ud_postag': [['NOUN', ...], ...],
  'postag': [['NOUN', ...], ...],
- 'morph': [[{'fPOS': 'NOUN', 'Gender': 'Fem', ...}, ...], ...],
  'rst': [<isanlp.annotation_rst.DiscourseUnit at 0x7f833defa5d0>]}
 ```
 
 5. The variable `res['rst']` can be visualized as:  
-   <img src="examples/example.rs3.png" width="700">
+
+   <img src="examples/paracetamol_wiki.png" width="700">
 
 6. To convert a list of DiscourseUnit objects to *.rs3 file with visualization, run:
 

@@ -1,9 +1,7 @@
-import re
-
 import pandas as pd
 import razdel
+import re
 from isanlp.annotation_rst import DiscourseUnit
-
 from td_rst_parser.predict_interactive import TrainedPredictor
 
 
@@ -65,8 +63,8 @@ class TopDownRSTParser:
                                    annot_syntax_dep_tree)
 
         # 3. Export into isanlp.DiscourseUnit
-        du = self.docs_structure_to_du(nodes=nods, tokens=annot_tokens,
-                                                   _tok_min=0, _tok_max=TopDownRSTParser.max_mentioned_token(nods))
+        du = self.docs_structure_to_du(nodes=nods, tokens=annot_tokens, text=annot_text,
+                                       _tok_min=0, _tok_max=TopDownRSTParser.max_mentioned_token(nods))
         return [du]
 
     def _get_max_id(self, dus):
@@ -84,10 +82,20 @@ class TopDownRSTParser:
 
         result = []
         for node in nodes:
-            left_node = DiscourseUnit(id=0, text=' '.join(
-                [tok.text for tok in annot_tokens[node.left_id1: node.left_id2 + 1]]))
-            right_node = DiscourseUnit(id=1, text=' '.join(
-                [tok.text for tok in annot_tokens[node.right_id1: node.right_id2 + 1]]))
+            start = annot_tokens[node.left_id1].begin
+            end = annot_tokens[node.left_id2].end
+            left_node = DiscourseUnit(id=0,
+                                      text=annot_text[start:end],
+                                      start=start,
+                                      end=end,
+                                      )
+            start = annot_tokens[node.right_id1].begin
+            end = annot_tokens[node.right_id2].end
+            right_node = DiscourseUnit(id=1,
+                                       text=annot_text[start:end],
+                                       start=start,
+                                       end=end,
+                                       )
 
             try:
                 pair_feature = self.tree_predictor.extract_features(left_node, right_node,
@@ -109,6 +117,7 @@ class TopDownRSTParser:
 
                 if right_nuclearity == 'Satellite':
                     left_relation = 'span'
+
             except:
                 print('Unknown error occured.')
                 left_relation = node.left_rel
@@ -134,10 +143,6 @@ class TopDownRSTParser:
         relation = self.tree_predictor.predict_label(pair_feature)
         if type(relation) == list:
             relation = relation[0]
-
-        # except RuntimeError as e:
-        #     # Some vector sizes do not fit in the model
-        #     print(e)
 
         return relation
 
@@ -286,7 +291,7 @@ class TopDownRSTParser:
             if node.left_id1 == _tok_min and node.right_id2 == _tok_max:
                 return node
 
-    def docs_structure_to_du(self, nodes, tokens, _tok_min, _tok_max):
+    def docs_structure_to_du(self, nodes, tokens, text, _tok_min, _tok_max):
         du = None
         root = TopDownRSTParser.define_root(nodes, _tok_min, _tok_max)
 
@@ -303,42 +308,49 @@ class TopDownRSTParser:
 
             if root.left_id1 == root.left_id2:
                 self._id += 1
+                start = tokens[root.left_id1].begin
+                end = tokens[root.left_id2].end
                 left = DiscourseUnit(id=self._id,
-                                     start=tokens[root.left_id1].begin,
-                                     end=tokens[root.left_id2].end,
-                                     text=' '.join([tok.text for tok in tokens[root.left_id1:root.left_id2 + 1]]),
+                                     start=start,
+                                     end=end,
+                                     text=text[start:end],
                                      relation='elementary')
             else:
-                left = self.docs_structure_to_du(nodes, tokens, root.left_id1, root.left_id2)
+                left = self.docs_structure_to_du(nodes, tokens, text, root.left_id1, root.left_id2)
 
             if root.right_id1 == root.right_id2:
                 self._id += 1
+                start = tokens[root.right_id1].begin
+                end = tokens[root.right_id2].end
                 right = DiscourseUnit(id=self._id,
-                                      start=tokens[root.left_id1].begin,
-                                      end=tokens[root.left_id2].end,
-                                      text=' '.join([tok.text for tok in tokens[root.right_id1:root.right_id2 + 1]]),
+                                      start=start,
+                                      end=end,
+                                      text=text[start:end],
                                       relation='elementary')
             else:
-                right = self.docs_structure_to_du(nodes, tokens, root.right_id1, root.right_id2)
+                right = self.docs_structure_to_du(nodes, tokens, text, root.right_id1, root.right_id2)
 
             self._id += 1
+            start = tokens[root.left_id1].begin
+            end = tokens[root.right_id2].end
             new_du = DiscourseUnit(id=self._id,
-                                   start=tokens[root.left_id1].begin,
-                                   end=tokens[root.left_id2].end,
+                                   start=start,
+                                   end=end,
                                    relation=rel,
                                    nuclearity=nuc,
-                                   text=' '.join([tok.text for tok in tokens[root.left_id1:root.right_id2 + 1]]),
+                                   text=text[start:end],
                                    left=left,
-                                   right=right
-                                   )
+                                   right=right)
             return new_du
 
         else:
             self._id += 1
+            start = tokens[_tok_min].begin
+            end = tokens[_tok_max].end
             return DiscourseUnit(id=self._id,
-                                 start=tokens[_tok_min].begin,
-                                 end=tokens[_tok_max].end,
-                                 text=' '.join([tok.text for tok in tokens[_tok_min:_tok_max + 1]]),
+                                 start=start,
+                                 end=end,
+                                 text=text[start:end],
                                  relation='elementary')
 
     @staticmethod

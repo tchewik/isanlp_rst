@@ -1,77 +1,81 @@
-from __future__ import division
-from __future__ import print_function
-
 import functools
+import nltk
+import numpy as np
 import os
-import pickle
+import pandas as pd
 import re
 import sys
 import time
 import warnings
-
-import nltk
-import numpy as np
-import pandas as pd
-from dostoevsky.models import FastTextSocialNetworkModel
-from dostoevsky.tokenization import RegexTokenizer
-from gensim.models import KeyedVectors
-from gensim.models import Word2Vec
+from isanlp.annotation import Span
 from nltk.translate import bleu_score, chrf_score
 from scipy import spatial
 from sklearn.decomposition import TruncatedSVD
-from sklearn.metrics.pairwise import paired_cosine_distances
-from sklearn.metrics.pairwise import paired_euclidean_distances
-from utils.features_processor_variables import MORPH_FEATS, FPOS_COMBINATIONS, count_words_x, \
-    count_words_y, pairs_words, relations_related
-from utils.synonyms_vocabulary import synonyms_vocabulary
-import razdel
+from sklearn.metrics.pairwise import paired_distances
+from textblob import TextBlob
+from utils.features_processor_variables import FPOS_COMBINATIONS, VOCAB_RU, VOCAB_EN
 
 warnings.filterwarnings('ignore')
 
-def tokenize(text, razdel=False):
-    if razdel:
-        result = ' '.join([tok.text for tok in razdel.tokenize(text)])
-    else:
-        result = ' '.join(text.split())
-    return result
 
 class FeaturesProcessor:
     CATEGORY = 'category_id'
 
     def __init__(self,
-                 model_dir_path: str,
                  verbose=0,
+                 language='ru',
                  use_markers=True,
                  use_morphology=True,
-                 embed_model_stopwords=True,
-                 use_w2v=True,
+                 use_use=True,
                  use_sentiment=True):
         """
-        :param str model_dir_path: path with all the models
-        :param int verbose: 0 for no logging, 1 for time counts logging and 2 for all warnings
-        :param bool embed_model_stopwords: do count stopwords during w2v vectorization
-        :param use_w2v: do w2v vectorization
-        :param use_sentiment: do sentiment extraction
+        Args
+        verbose (int): 0 for no logging, 1 for time counts logging and 2 for all warnings
+        language (str): 'ru' or 'en'
+        use_markers (bool): do count vocabulary-related marker features
+        use_use (bool): do vectorization with universal sentence encoder
+        use_sentiment (bool): do sentiment prediction
         """
 
-        self._model_dir_path = model_dir_path
         self._verbose = verbose
         self._use_markers = use_markers
         self._use_morphology = use_morphology
-        self._embed_model_stopwords = embed_model_stopwords
-        self._use_w2v = use_w2v
+        self._language = language
+        self._use_use = use_use
         self._use_sentiment = use_sentiment
 
         if self._verbose:
             print("Processor initialization...\t", end="", flush=True)
 
-        self.relations_related = relations_related
-        self.stop_words = nltk.corpus.stopwords.words('russian')
-        self.count_words_x = count_words_x
-        self.count_words_y = count_words_y
-        self.pairs_words = pairs_words
+        if self._language == 'ru':
+            self._STOP_WORDS = nltk.corpus.stopwords.words('russian')
+            vocabulary = VOCAB_RU
 
-        self.vectorizer = pickle.load(open(os.path.join(model_dir_path, 'tf_idf', 'pipeline.pkl'), 'rb'))
+            if self._use_sentiment:
+                self._get_sentiments = self._get_sentiments_dostoevsky
+                from dostoevsky.models import FastTextSocialNetworkModel
+                from dostoevsky.tokenization import RegexTokenizer
+                self._dost_sentiment_model = FastTextSocialNetworkModel(tokenizer=RegexTokenizer())
+
+
+        elif self._language == 'en':
+            self._STOP_WORDS = nltk.corpus.stopwords.words('english')
+            vocabulary = VOCAB_EN
+
+            if self._use_sentiment:
+                self._get_sentiments = self._get_sentiment_textblob
+
+        self._MORPH_FEATS = vocabulary.get('morph_feats', [])
+        self._COUNT_WORDS_X = vocabulary.get('count_words_x', [])
+        self._COUNT_WORDS_Y = vocabulary.get('count_words_y', [])
+        self._MARKERS_BY_CLASSES = vocabulary.get('markers_by_classes', [])
+        self._PAIRS_MARKERS = vocabulary.get('pairs_words', [])
+        self._NER_TAGS = vocabulary.get('ner_tags', [])
+
+        self._remove_stop_words = lambda lemmatized_snippet: [word for word in lemmatized_snippet if
+                                                              word not in self._STOP_WORDS]
+
+        self._FPOS_COMBINATIONS = FPOS_COMBINATIONS
 
         # preprocessing functions
         self._uppercased = lambda snippet, length: sum(
@@ -79,39 +83,28 @@ class FeaturesProcessor:
         self._start_with_uppercase = lambda snippet, length: sum(
             [word[0].isupper() if len(word) > 0 else False for word in snippet.split(' ')]) / length
 
-        if self._use_w2v:
-            self.embed_model_path = os.path.join(model_dir_path, 'w2v', 'default', 'model.vec')
-            self._synonyms_vocabulary = synonyms_vocabulary
-
-            # embeddings
-            if self.embed_model_path[-4:] in ['.vec', '.bin']:
-                self.word2vec_model = KeyedVectors.load_word2vec_format(self.embed_model_path,
-                                                                        binary=self.embed_model_path[-4:] == '.bin')
-            else:
-                self.word2vec_model = Word2Vec.load(self.embed_model_path)
-
-            test_word = ['дерево', 'NOUN']
-            try:
-                self.word2vec_vector_length = len(self.word2vec_model.wv.get_vector(test_word[0]))
-                self.word2vec_tag_required = False
-            except KeyError:
-                self.word2vec_vector_length = len(self.word2vec_model.wv.get_vector('_'.join(test_word)))
-                self.word2vec_tag_required = True
-
-            self.word2vec_stopwords = embed_model_stopwords
-
-        self._remove_stop_words = lambda lemmatized_snippet: [word for word in lemmatized_snippet if
-                                                              word not in self.stop_words]
-
-        self.fpos_combinations = FPOS_COMBINATIONS
-
-        if self._use_sentiment:
-            self.sentiment_model = FastTextSocialNetworkModel(tokenizer=RegexTokenizer())
-
-        # self._context_length = 3
+        if self._use_use:
+            import tensorflow_hub as hub
+            import tensorflow_text  # tensorflow_text>=2.0.0rc0
+            self._universal_encoder = hub.load("https://tfhub.dev/google/universal-sentence-encoder-multilingual/3")
 
         if self._verbose:
             print('[DONE]')
+
+    def tokenize(self, text, start):
+        """ Returns isanlp annotation of tokens in span by start position and text string
+        Args:
+            text (str): span text
+            start (int): position of the first character in the original document
+        Returns:
+            list[isanlp.annotation.Token]: tokens found in the span
+        """
+
+        def get_tokens(char_start, length):
+            span = Span(char_start, char_start + length)
+            return [token for token in self.annot_tokens if token.overlap(span)]
+
+        return get_tokens(start, len(text))
 
     def _find_y(self, snippet_x, snippet_y, loc_x):
         result = self.annot_text.find(snippet_y, loc_x + len(snippet_x) - 1)
@@ -124,243 +117,138 @@ class FeaturesProcessor:
     def __call__(self, df_, annot_text, annot_tokens, annot_sentences, annot_lemma, annot_morph, annot_postag,
                  annot_syntax_dep_tree):
 
-        df = df_[:]
-        df.snippet_x = df.snippet_x.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
-        df.snippet_x = df.snippet_x.map(tokenize)
-        df.snippet_y = df.snippet_y.replace('\n', ' ', regex=True).replace('  ', ' ', regex=True)
-        df.snippet_y = df.snippet_y.map(tokenize)
-
-        # self.annot_text = annot_text.replace('\n', ' ').replace('  ', ' ')
-        self.annot_text = tokenize(annot_text)
+        self.annot_text = annot_text
         self.annot_tokens = annot_tokens
         self.annot_sentences = annot_sentences
         self.annot_lemma = annot_lemma
         self.annot_morph = annot_morph
         self.annot_postag = annot_postag
         self.annot_syntax_dep_tree = annot_syntax_dep_tree
+        # self.annot_entities = annot_entities  # Don't use for now (no success)
+
+        df = df_.copy()
+        df.snippet_x_tokens = df.apply(lambda row: self.tokenize(text=row.snippet_x, start=row.loc_x), axis=1)
+        df.snippet_y_tokens = df.apply(lambda row: self.tokenize(text=row.snippet_y, start=row.loc_y), axis=1)
 
         t, t_final = None, None
         if self._verbose:
             t = time.time()
             t_final = t
-            print('1\t', end="", flush=True)
+            print('1 (Positional and length features)\t', end="", flush=True)
 
-        df['is_broken'] = False
+        # Get tokens, find location and length in raw text ###############
 
-        # map discourse units to annotations
-        if not 'loc_x' in df.keys():
-            df['loc_x'] = df.snippet_x.map(self.annot_text.find)
-        if not 'loc_y' in df.keys():
-            df['loc_y'] = df.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x - 1), axis=1)
+        df['snippet_x_tokens'] = df.apply(lambda row: self.tokenize(text=row.snippet_x, start=row.loc_x), axis=1)
+        df['snippet_y_tokens'] = df.apply(lambda row: self.tokenize(text=row.snippet_y, start=row.loc_y), axis=1)
 
-        df['token_begin_x'] = df.loc_x.map(self.locate_token)
-        df['token_begin_y'] = df.loc_y.map(self.locate_token)
+        df['token_begin_x'] = df.snippet_x_tokens.map(lambda row: self.locate_token(row[0]))
+        df['token_begin_y'] = df.snippet_y_tokens.map(lambda row: self.locate_token(row[0]))
 
-        try:
-            df['token_end_y'] = df.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)), axis=1)  # -1
-            df['token_end_y'] = df['token_end_y'] + (df['token_end_y'] == df['token_begin_y']) * 1
-        except:
-            if self._verbose == 2:
-                print(f'Unable to locate second snippet >>> {(df.snippet_x.values, df.snippet_y.values)}',
-                      file=sys.stderr)
-                # print(self.annot_text, file=sys.stderr)
-            df['tokens_x'] = df.snippet_x.map(lambda row: row.split())
-            df['tokens_y'] = df.snippet_y.map(lambda row: row.split())
-            # df['left_context'] = ['_END_'] * self._context_length
-            # df['right_context'] = ['_END_'] * self._context_length
-            df['same_sentence'] = 0
-            df['is_broken'] = True
-            return df
+        df['len_w_x'] = df.snippet_x_tokens.map(len)
+        df['len_w_y'] = df.snippet_y_tokens.map(len)
 
-        # length of tokens sequence
-        df['len_w_x'] = df['token_begin_y'] - df['token_begin_x']
-        df['len_w_y'] = df['token_end_y'] - df['token_begin_y']  # +1
+        df['token_end_x'] = df.token_begin_x + df.len_w_x
+        df['token_end_y'] = df.token_begin_y + df.len_w_y
 
-        df['snippet_x_locs'] = df.apply(lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                                        range(row.token_begin_x, row.token_begin_y)]]],
-                                        axis=1)
-        df['snippet_x_locs'] = df.snippet_x_locs.map(lambda row: row[0])
-        # print(df[['snippet_x', 'snippet_y', 'snippet_x_locs']].values)
-        broken_pair = df[df.snippet_x_locs.map(len) < 1]
-        if not broken_pair.empty:
-            print(
-                f"Unable to locate first snippet >>> {df[df.snippet_x_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'loc_x', 'loc_y']].values}",
-                file=sys.stderr)
-            print(self.annot_text, file=sys.stderr)
-            df = df[df.snippet_x_locs.map(len) > 0]
+        # Find them in the sentenced text ###############
 
-        # print(df[['snippet_x', 'snippet_y', 'token_begin_y', 'token_end_y']])
-        df['snippet_y_locs'] = df.apply(lambda row: [
-            [pair for pair in [self.token_to_sent_word(token) for token in range(row.token_begin_y, row.token_end_y)]]],
-                                        axis=1)
-        df['snippet_y_locs'] = df.snippet_y_locs.map(lambda row: row[0])
-        broken_pair = df[df.snippet_y_locs.map(len) < 1]
+        df['snippet_x_locs'] = df.apply(
+            lambda row: list(self.get_sent_words_locations(span_begin=row.token_begin_x, span_end=row.token_end_x)),
+            axis=1)
+        df['snippet_y_locs'] = df.apply(
+            lambda row: list(self.get_sent_words_locations(span_begin=row.token_begin_y, span_end=row.token_end_y)),
+            axis=1)
 
-        if not broken_pair.empty:
-            print(
-                f"Unable to locate second snippet >>> {df[df.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
-                file=sys.stderr)
-            print(self.annot_text, file=sys.stderr)
-            df2 = df[df.snippet_y_locs.map(len) < 1]
-            _df2 = pd.DataFrame({
-                'snippet_x': df2['snippet_y'].values,
-                'snippet_y': df2['snippet_x'].values,
-                'loc_y': df2['loc_x'].values,
-                'token_begin_y': df2['token_begin_x'].values,
-            })
-
-            df2 = _df2[:]
-            df2['loc_x'] = df2.apply(lambda row: self.annot_text.find(row.snippet_x, row.loc_y - 3), axis=1)
-            df2['token_begin_x'] = df2.loc_x.map(self.locate_token)
-            # df2['loc_y'] = df2.apply(lambda row: self._find_y(row.snippet_x, row.snippet_y, row.loc_x), axis=1)
-            df2['token_end_y'] = df2.apply(lambda row: self.locate_token(row.loc_y + len(row.snippet_y)),  # + 1,
-                                           axis=1)  # -1
-            # df2['token_begin_x'] = df2['token_begin_y']
-            # df2['token_begin_y'] = df2.loc_y.map(self.locate_token)
-            df2['len_w_x'] = df2['token_begin_y'] - df2['token_begin_x']
-            df2['len_w_y'] = df2['token_end_y'] - df2['token_begin_y']  # +1
-            df2['snippet_x_locs'] = df2.apply(
-                lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                range(row.token_begin_x, row.token_begin_y)]]], axis=1)
-            df2['snippet_x_locs'] = df2.snippet_x_locs.map(lambda row: row[0])
-            df2['snippet_y_locs'] = df2.apply(
-                lambda row: [[pair for pair in [self.token_to_sent_word(token) for token in
-                                                range(row.token_begin_y, row.token_end_y)]]], axis=1)
-            df2['snippet_y_locs'] = df2.snippet_y_locs.map(lambda row: row[0])
-            broken_pair = df2[df2.snippet_y_locs.map(len) < 1]
-            if not broken_pair.empty:
-                print(
-                    f"Unable to locate second snippet AGAIN >>> {df2[df2.snippet_y_locs.map(len) < 1][['snippet_x', 'snippet_y', 'token_begin_x', 'token_begin_y', 'token_end_y', 'loc_x', 'loc_y']].values}",
-                    file=sys.stderr)
-            df = df[df.snippet_y_locs.map(len) > 0]
-            df2 = df2[df2.snippet_x_locs.map(len) > 0]
-            df = pd.concat([df, df2])
-
-        # print(df[['snippet_x', 'snippet_y', 'snippet_y_locs', 'loc_x', 'loc_y']].values)
-        df.drop(columns=['loc_x', 'loc_y'], inplace=True)
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('2\t', end="", flush=True)
-
-        # define a number of sentences and whether x and y are in the same sentence
         df['sentence_begin_x'] = df.snippet_x_locs.map(lambda row: row[0][0])
         df['sentence_begin_y'] = df.snippet_y_locs.map(lambda row: row[0][0])
         df['sentence_end_y'] = df.snippet_y_locs.map(lambda row: row[-1][0])
         df['number_sents_x'] = (df['sentence_begin_y'] - df['sentence_begin_x']) | 1
         df['number_sents_y'] = (df['sentence_end_y'] - df['sentence_begin_y']) | 1
-        df['same_sentence'] = (df['sentence_begin_x'] == df['sentence_begin_y']).astype(int)
+
+        # Get relative positions ###############
+        df['token_begin_x'] = df['token_begin_x'] / len(annot_tokens)
+        df['token_begin_y'] = df['token_begin_y'] / len(annot_tokens)
+        df['token_end_y'] = df['token_end_y'] / len(annot_tokens)
+        df['sentence_begin_relative_x'] = df['sentence_begin_x'] / len(annot_sentences)
+        df['sentence_begin_relative_y'] = df['sentence_begin_y'] / len(annot_sentences)
+        df['sentence_end_relative_y'] = df['sentence_end_y'] / len(annot_sentences)
+
+        if self._verbose:
+            print('time:', time.time() - t)
+            t = time.time()
+            print('2 (Simple string features)\t', end="", flush=True)
+
+        ##### Simple string-based features ##########
+
+        # ratio of uppercased words
+        df['upper_ratio_x'] = df.snippet_x_tokens.map(
+            lambda row: sum(token.text.isupper() for token in row) / (len(row) + 1e-5))
+        df['upper_ratio_y'] = df.snippet_y_tokens.map(
+            lambda row: sum(token.text.isupper() for token in row) / (len(row) + 1e-5))
+
+        # ratio of the words starting with upper case
+        df['first_up_ratio_x'] = df.snippet_x_tokens.map(
+            lambda row: sum(token.text[0].isupper() for token in row) / (len(row) + 1e-5))
+        df['first_up_ratio_y'] = df.snippet_y_tokens.map(
+            lambda row: sum(token.text[0].isupper() for token in row) / (len(row) + 1e-5))
+
+        # whether DU starts with upper case
+        df['first_up_x'] = df.snippet_x_tokens.map(lambda row: row[0].text[0].isupper()).astype(int)
+        df['first_up_y'] = df.snippet_y_tokens.map(lambda row: row[0].text[0].isupper()).astype(int)
+
+        if self._verbose:
+            print(time.time() - t)
+            t = time.time()
+            print('3 (Granularity and syntax features)\t', end="", flush=True)
+
+        # Granularity features: define a number of sentences and whether x and y are in the same sentence ##########
+
+        df['same_sentence'] = (df['sentence_begin_x'] == df['sentence_end_y']).astype(int)
+
         df['same_paragraph'] = df.apply(
-            lambda row: annot_text.find('\n', row.sentence_begin_x, row.sentence_end_y) != -1,
-            axis=1).astype(int)
+            lambda row: annot_text.find('\n', row.sentence_begin_x, row.sentence_end_y) != -1, axis=1).astype(int)
         df['same_paragraph'] = df['same_sentence'] | df['same_paragraph']
 
+        at_paragraph_start = lambda row: int(
+            row[0].begin == 0 or '\n' in self.annot_text[row[0].begin - 4: row[0].begin])
+        df['at_paragraph_start_x'] = df.snippet_x_tokens.map(at_paragraph_start)
+        df['at_paragraph_start_y'] = df.snippet_y_tokens.map(at_paragraph_start)
+
+        df['at_sentence_start_x'] = df.at_paragraph_start_x | df.snippet_x_locs.map(lambda row: int(row[0][1] == 0))
+        df['at_sentence_start_y'] = df.at_paragraph_start_y | df.snippet_y_locs.map(lambda row: int(row[0][1] == 0))
+
+        # Syntax features ##########
+
         # find the common syntax root of x and y
-        df['common_root'] = df.apply(lambda row: [self.locate_root(row)], axis=1)
-
-        # find its relative position in text
-        # df['common_root_position'] = df.common_root.map(lambda row: self.map_to_token(row[0])) / len(annot_tokens)
-
-        # define its fPOS
-        # df['common_root_fpos'] = df.common_root.map(lambda row: self.get_postag(row)[0])
+        df['common_root'] = df.apply(lambda row: self.locate_root(row), axis=1)
 
         # 1 if it is located in y
         df['root_in_y'] = df.apply(
-            lambda row: self.map_to_token(row.common_root[0]) > row.token_begin_y, axis=1).astype(int)
+            lambda row: self.map_to_token(row.common_root) >= row.token_begin_y, axis=1).astype(int)
 
         df.drop(columns=['common_root'], inplace=True)
 
         if self._verbose:
-            print(time.time() - t)
+            print('time:', time.time() - t)
             t = time.time()
-            print('3\t', end="", flush=True)
+            print('4 (Discourse markers)\t', end="", flush=True)
 
-        # find certain markers for various relations
         if self._use_markers:
-            for relation in self.relations_related:
+            # find certain markers sets for various relations
+            for relation in self._MARKERS_BY_CLASSES:
                 df[relation + '_count' + '_x'] = df.snippet_x.map(lambda row: self._relation_score(relation, row))
                 df[relation + '_count' + '_y'] = df.snippet_y.map(lambda row: self._relation_score(relation, row))
 
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('4\t', end="", flush=True)
+            # detect discourse markers
+            for word in self._COUNT_WORDS_X:
+                df[word.pattern + '_count' + '_x'] = df.snippet_x.map(lambda row: self.count_marker_(word, row))
 
-        # get tokens
-        df['tokens_x'] = df.apply(lambda row: self.get_tokens(row.token_begin_x, row.token_begin_y), axis=1)
-        df['tokens_x'] = df.apply(lambda row: row.tokens_x if len(row.tokens_x) > 0 else row.snippet_x.split(), axis=1)
-        df['tokens_y'] = df.apply(lambda row: self.get_tokens(row.token_begin_y, row.token_end_y - 1), axis=1)
-        df['tokens_y'] = df.apply(lambda row: row.tokens_y if len(row.tokens_y) > 0 else row.snippet_y.split(), axis=1)
+            for word in self._COUNT_WORDS_Y:
+                df[word.pattern + '_count' + '_y'] = df.snippet_y.map(lambda row: self.count_marker_(word, row))
 
         # get lemmas
         df['lemmas_x'] = df.snippet_x_locs.map(self.get_lemma)
         df['lemmas_y'] = df.snippet_y_locs.map(self.get_lemma)
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('5\t', end="", flush=True)
-
-        # ratio of uppercased words
-        df['upper_x'] = df.tokens_x.map(lambda row: sum(token.isupper() for token in row) / (len(row) + 1e-5))
-        df['upper_y'] = df.tokens_y.map(lambda row: sum(token.isupper() for token in row) / (len(row) + 1e-5))
-
-        # ratio of the words starting with upper case
-        df['st_up_x'] = df.tokens_x.map(lambda row: sum(token[0].isupper() for token in row) / (len(row) + 1e-5))
-        df['st_up_y'] = df.tokens_y.map(lambda row: sum(token[0].isupper() for token in row) / (len(row) + 1e-5))
-
-        # whether DU starts with upper case
-        df['du_st_up_x'] = df.tokens_x.map(lambda row: row[0][0].isupper()).astype(int)
-        df['du_st_up_y'] = df.tokens_y.map(lambda row: row[0][0].isupper()).astype(int)
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('6\t', end="", flush=True)
-
-        # get morphology
-        if self._use_morphology:
-            df['morph_x'] = df.snippet_x_locs.map(self.get_morph)
-            df['morph_y'] = df.snippet_y_locs.map(self.get_morph)
-
-            # count presence and/or quantity of various language features in the whole DUs and at the beginning/end of them
-            df = df.apply(lambda row: self._linguistic_features(row, tags=MORPH_FEATS), axis=1)
-            df = df.apply(lambda row: self._first_and_last_pair(row), axis=1)
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('7\t', end="", flush=True)
-
-        # count various vectors similarity metrics for morphology
-        if self._use_morphology:
-            linknames_for_snippet_x = df[[name + '_x' for name in MORPH_FEATS]]
-            linknames_for_snippet_y = df[[name + '_y' for name in MORPH_FEATS]]
-            df.reset_index(inplace=True)
-            df['morph_vec_x'] = pd.Series(self.columns_to_vectors_(linknames_for_snippet_x))
-            df['morph_vec_y'] = pd.Series(self.columns_to_vectors_(linknames_for_snippet_y))
-            df['morph_correlation'] = df[['morph_vec_x', 'morph_vec_y']].apply(
-                lambda row: spatial.distance.correlation(*row), axis=1)
-            df['morph_hamming'] = df[['morph_vec_x', 'morph_vec_y']].apply(lambda row: spatial.distance.hamming(*row),
-                                                                           axis=1)
-            df['morph_matching'] = df[['morph_vec_x', 'morph_vec_y']].apply(
-                lambda row: self.get_match_between_vectors_(*row), axis=1)
-            df.set_index('index', drop=True, inplace=True)
-            df = df.drop(columns=['morph_vec_x', 'morph_vec_y'])
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('8\t', end="", flush=True)
-
-        # detect discourse markers
-        if self._use_markers:
-            for word in self.count_words_x:
-                df[word + '_count' + '_x'] = df.snippet_x.map(lambda row: self.count_marker_(word, row))
-
-            for word in self.count_words_y:
-                df[word + '_count' + '_y'] = df.snippet_y.map(lambda row: self.count_marker_(word, row))
 
         # count stop words in the texts
         df['stopwords_x'] = df.lemmas_x.map(self._count_stop_words)
@@ -369,58 +257,68 @@ class FeaturesProcessor:
         if self._verbose:
             print(time.time() - t)
             t = time.time()
-            print('9\t', end="", flush=True)
+            print('5 (Morphological features)\t', end="", flush=True)
 
-        # dummy function needed for self.vectorizer (do NOT remove)
-        def dummy(x):
-            return x
+        # Morphological features ##########
 
-        df.reset_index(drop=True, inplace=True)
-        tf_idf_x = self.vectorizer.transform(df['tokens_x'].map(lambda row: [_token.lower() for _token in row]))
-        tf_idf_y = self.vectorizer.transform(df['tokens_y'].map(lambda row: [_token.lower() for _token in row]))
-        df['cos_tf_idf_dist'] = paired_cosine_distances(tf_idf_x, tf_idf_y)
-        df['ang_cos_tf_idf_sim'] = 1. - np.arccos(df['cos_tf_idf_dist']) * 2. / np.pi
-
-        tf_idf_x = pd.DataFrame(tf_idf_x).add_prefix('tf_idf_x_')
-        tf_idf_y = pd.DataFrame(tf_idf_y).add_prefix('tf_idf_y_')
-
-        df = pd.concat([df, tf_idf_x, tf_idf_y], axis=1)
-
-        if self._verbose:
-            print(time.time() - t)
-            t = time.time()
-            print('10\t', end="", flush=True)
+        # count number of verbs
+        df['Verb_number_x'] = df.snippet_x_locs.map(lambda row: sum([pos == 'VERB' for pos in self.get_postag(row)]))
+        df['Verb_number_y'] = df.snippet_y_locs.map(lambda row: sum([pos == 'VERB' for pos in self.get_postag(row)]))
 
         # count lexical similarity
         df['bleu'] = df.apply(lambda row: self.get_bleu_score(row.lemmas_x, row.lemmas_y), axis=1)
 
+        if self._use_morphology:
+            df['morph_x'] = df.snippet_x_locs.map(self.get_morph)
+            df['morph_y'] = df.snippet_y_locs.map(self.get_morph)
+
+            # count presence and/or quantity of various language features in the whole DUs
+            # and at the beginning/end of them
+            df = df.apply(lambda row: self._linguistic_features(row), axis=1)
+            df = df.apply(lambda row: self._first_and_last_pair(row), axis=1)
+
+            # count various vectors similarity metrics for morphology
+            linknames_for_snippet_x = df[[name + '_x' for name in self._MORPH_FEATS]].values
+            linknames_for_snippet_y = df[[name + '_y' for name in self._MORPH_FEATS]].values
+            df.reset_index(inplace=True)
+
+            df['morph_correlation'] = paired_distances(linknames_for_snippet_x, linknames_for_snippet_y,
+                                                       metric=spatial.distance.hamming)
+            df['morph_cos'] = paired_distances(linknames_for_snippet_x, linknames_for_snippet_y,
+                                               metric='cosine')
+            df['morph_matching'] = paired_distances(linknames_for_snippet_x > 0.01,
+                                                    linknames_for_snippet_y > 0.01,
+                                                    metric=spatial.distance.hamming)
+            df.set_index('index', drop=True, inplace=True)
+
+        # NER features ##########
+        ### Deprecated! Not useful.
+        if False:
+            if self._verbose:
+                print(time.time() - t)
+                t = time.time()
+                print(' (NER features)\t', end="", flush=True)
+
+            # form matrices with columns corresponding to self.vocabulary.get('ner_tags')
+            ner_x = np.stack(df.snippet_x_tokens.map(self._get_ner_features).values)
+            ner_y = np.stack(df.snippet_y_tokens.map(self._get_ner_features).values)
+            df['ner_matching'] = paired_distances(ner_x, ner_y, metric=spatial.distance.hamming)
+            for i, ner_tag in enumerate(self._NER_TAGS):
+                df[ner_tag + '_x'] = ner_x[:, i]
+                df[ner_tag + '_y'] = ner_y[:, i]
+
         if self._verbose:
             print(time.time() - t)
             t = time.time()
-            print('11\t', end="", flush=True)
+            print('6 (USE features)\t', end="", flush=True)
 
-        if self._use_w2v:
-            # get average vector for each text
-            df = self._get_vectors(df)
+        if self._use_use:
+            df = self._vectorize_with_use(df)
 
         if self._verbose:
             print(time.time() - t)
             t = time.time()
-            print('12\t', end="", flush=True)
-
-        # get relative positions in text
-        df['token_begin_x'] = df['token_begin_x'] / len(annot_tokens)
-        df['token_begin_y'] = df['token_begin_y'] / len(annot_tokens)
-        df['token_end_y'] = df['token_end_y'] / len(annot_tokens)
-        df['sentence_begin_x'] = df['sentence_begin_x'] / len(annot_sentences)
-        df['sentence_begin_y'] = df['sentence_begin_y'] / len(annot_sentences)
-        df['sentence_end_y'] = df['sentence_end_y'] / len(annot_sentences)
-
-        df['snippet_x_tmp'] = df.lemmas_x.map(lambda lemmas: ' '.join(lemmas).strip())
-        df['snippet_y_tmp'] = df.lemmas_y.map(lambda lemmas: ' '.join(lemmas).strip())
-
-        df['postags_x'] = df.snippet_x_locs.map(self.get_postags)
-        df['postags_y'] = df.snippet_y_locs.map(self.get_postags)
+            print('7 (Sentiment features)\t', end="", flush=True)
 
         # count sentiments
         if self._use_sentiment:
@@ -443,39 +341,70 @@ class FeaturesProcessor:
 
         return df.fillna(0.)
 
-    def locate_token(self, start):
-        for i, token in enumerate(self.annot_tokens):
-            if token.begin >= start:
+    def locate_token(self, token):
+        """ Finds the token index in the annotation
+        Args:
+            token (isanlp.annotation.Token): the token to find
+        Returns:
+            (int): index in the raw text
+        """
+        for i, _token in enumerate(self.annot_tokens):
+            if token == _token:
                 return i
-        return i
 
-    def map_to_token(self, pair):
-        if pair == -1:
-            return -1
+    def get_sent_words_locations(self, span_begin, span_end):
+        """ Generator for the (sentence, word) position for each token in span
+        Args:
+            span_begin (int): absolute position of the first span token in text
+            span_end (int): absolute position of the last span token in text + 1
+        """
 
-        sentence, word = pair
-        if type(word) == list and len(word) == 1:
-            word = word[0]
+        for current_token in range(span_begin, span_end):
+            for sidx, sentence in enumerate(self.annot_sentences):
+                if current_token >= sentence.end:
+                    # Straight to the next sentence
+                    continue
 
-        return self.annot_sentences[sentence].begin + word
-
-    def token_to_sent_word(self, token):
-        for i, sentence in enumerate(self.annot_sentences):
-            if sentence.begin <= token < sentence.end:
-                return i, token - sentence.begin
-        for i, sentence in enumerate(self.annot_sentences):
-            if sentence.begin <= token + 1 < sentence.end:
-                return i, token - sentence.begin
-        return -1, -1
+                yield (sidx, current_token - sentence.begin)
+                break
 
     def locate_root(self, row):
+        """ If two spans are in the same sentence,
+            returns the root position as (sentence_number, word_number)
+            Args:
+                row (pd.Series): a raw in the data DataFrame
+            Returns:
+                (int, int): Sentence number, word number
+            """
+
         if row.same_sentence:
             for i, wordsynt in enumerate(self.annot_syntax_dep_tree[row.sentence_begin_x]):
                 if wordsynt.parent == -1:
-                    return row.sentence_begin_x, [i]
-        return -1
+                    return (row.sentence_begin_x, i)
 
-    def get_roots(self, locations):
+        return -1, -1
+
+    def map_to_token(self, pair):
+        """ Finds absolute index for the token by (sentence, word) pair
+        Args:
+            pair (list[int, int]): sentence number, word number
+        Returns:
+            (int): absolute position of the token
+        """
+        if pair == (-1, -1):
+            return -1
+
+        sentence, word = pair
+        return self.annot_sentences[sentence].begin + word
+
+    def _get_roots(self, locations):
+        """ Return the syntactic parents for all the presented (sentence, word) locations
+            [NOT USED SINCE 2.0]
+        Args:
+            locations (list[int, int]): sentence number, word number
+        Returns:
+            list[int]: head indexes for each word, word itself if it's the root
+        """
         res = []
         for word in locations:
             parent = self.annot_syntax_dep_tree[word[0]][word[1][0]].parent
@@ -483,41 +412,54 @@ class FeaturesProcessor:
                 res.append(word)
         return res
 
-    def locate_attached(self, row):
-        res = []
-        sent_begin = self.annot_sentences[row.sentence_begin_x].begin
-        for i, wordsynt in enumerate(self.annot_syntax_dep_tree[row.sentence_begin_x]):
-            if row.token_begin_x - sent_begin <= i < row.token_end_y - sent_begin:
-                if wordsynt.parent == -1:
-                    res.append(i)
-        return res
+    def get_lemma(self, locations):
+        """ Return the lemmas for all the presented (sentence, word) locations
+        Args:
+            locations (list[int, int]): sentence number, word number
+        Returns:
+            list[str]: lemmas for each word
+        """
+        return [self.annot_lemma[location[0]][location[1]] for location in locations]
 
-    def get_tokens(self, begin, end):
-        return [self.annot_tokens[i].text for i in range(begin, end)]
+    def get_postag(self, locations):
+        """ Return the postags for each (sentence, word) location pair
+        Args:
+            locations (list[int, int]): sentence number, word number
+        Returns:
+            list[str]: postags found in text span, in appearance order
+        """
+        if not locations or locations[0] == -1:
+            return ['']
 
-    def get_lemma(self, positions):
-        return [self.annot_lemma[position[0]][position[1]] for position in positions]
+        result = [self.annot_postag[location[0]][location[1]] for location in locations] or ['X']
+        return result
 
-    def get_postag(self, positions):
-        if positions:
-            if positions[0] == -1:
-                return ['']
-            result = [self.annot_postag[position[0]][position[1]] for position in positions]
-            if not result:
-                return ['X']
-            return result
-        return ['']
+    def get_morph(self, locations):
+        """ Return the postags for each (sentence, word) location pair
+        Args:
+            locations (list[int, int]): sentence number, word number
+        Returns:
+            list[dict]: morphological features for each word
+        """
+        return [self.annot_morph[location[0]][location[1]] for location in locations]
 
-    def get_morph(self, positions):
-        return [self.annot_morph[position[0]][position[1]] for position in positions]
-
-    def columns_to_vectors_(self, columns):
-        return [row + 1e-05 for row in np.array(columns.values.tolist())]
-
-    def get_match_between_vectors_(self, vector1, vector2):
-        return spatial.distance.hamming([k > 0.01 for k in vector1], [k > 0.01 for k in vector2])
+    def _get_ner_features(self, tokens):
+        """ Finds how many named entities of each class is in the span
+        Args:
+            tokens (isanlp.annotation.Token): tokens found in the text span
+        Returns:
+            list[int]: each element of the list represents the presence of one of the NER features (ORG, PER, etc.)
+        """
+        snippet_span = Span(begin=tokens[0].begin, end=tokens[-1].end)
+        result = dict(zip(self._NER_TAGS, [0] * len(self._NER_TAGS)))
+        for entity in self.annot_entities:
+            if entity.overlap(snippet_span):
+                result[entity.tag] = 1
+        return list(result.values())
 
     def _get_fpos_vectors(self, row):
+        """ Deprecated """
+
         result = {}
 
         for header in ['VERB', 'NOUN', '', 'ADV', 'ADJ', 'ADP', 'CONJ', 'PART', 'PRON' 'NUM']:
@@ -530,7 +472,7 @@ class FeaturesProcessor:
 
     @functools.lru_cache(maxsize=2048)
     def count_marker_(self, word, row):
-        return bool(re.match(word, row, re.IGNORECASE))
+        return bool(word.search(row))
 
     @functools.lru_cache(maxsize=2048)
     def locate_marker_(self, word, row):
@@ -539,16 +481,11 @@ class FeaturesProcessor:
             return (index + 1.) / len(row) * 100.
         return -1.
 
-    def _svd_tfidf_matrix(self, matrix):
-        svd = TruncatedSVD(n_components=300)
-        return svd.fit_transform(matrix)
-
-    def _linguistic_features(self, row, tags):
-        """ Count occurences of each feature from MORPH_FEATS and/or SYNTAX_LINKS """
-        tags = MORPH_FEATS
+    def _linguistic_features(self, row):
+        """ Count occurences of each feature from _MORPH_FEATS """
 
         def get_tags_for_snippet(morph_annot, mark='_x'):
-            result = dict.fromkeys(['%s%s' % (tag, mark) for tag in tags], 0)
+            result = dict.fromkeys(['%s%s' % (tag, mark) for tag in self._MORPH_FEATS], 0)
 
             for record in morph_annot:
                 for key, value in record.items():
@@ -556,9 +493,7 @@ class FeaturesProcessor:
                         result['%s_%s%s' % (key, value, mark)] += 1
                     except KeyError as e:
                         if self._verbose == 2:
-                            print(f"::: Did not find such key in MORPH_FEATS: {e} :::", file=sys.stderr)
-                        else:
-                            pass
+                            print(f"::: Did not find such key in _MORPH_FEATS: {e} :::", file=sys.stderr)
 
             return result
 
@@ -570,19 +505,10 @@ class FeaturesProcessor:
         return row.append(pd.Series(list(tags.values()), index=list(tags.keys())))
 
     def _count_stop_words(self, lemmatized_text, threshold=0):
-        return len([1 for token in lemmatized_text if len(token) >= threshold and token in self.stop_words])
+        return len([1 for token in lemmatized_text if len(token) >= threshold and token in self._STOP_WORDS])
 
     def _relation_score(self, relation, row):
-        return sum([1 for value in self.relations_related[relation] if value in row])
-
-    def _postag(self, location):
-        return self.annot_postag[location[0]][location[1]]
-
-    def get_postags(self, locations):
-        result = []
-        for location in locations:
-            result.append(self._postag(location))
-        return ' '.join(result)
+        return sum([1 for value in self._MARKERS_BY_CLASSES[relation] if value.search(row)])
 
     def _first_postags(self, locations, n=2):
         result = []
@@ -601,30 +527,49 @@ class FeaturesProcessor:
         return result
 
     def _first_and_last_pair(self, row):
+        """ Computes features related to the first tokens pair & last tokens pair
+            for the left and right discourse units.
+            These are first-pair-POS, last-pair-POS, first-pair-connector, last-pair-connector;
+            one column = one feature (first_VERB_x, first_because_x, etc.)
+
+            Args:
+                row (pd.Series): row in the data DataFrame
+            Returns:
+                (pd.DataFrame): the extended DataFrame with all the computed features
+             """
+
         def get_features_for_snippet(first_pair_text, first_pair_morph, last_pair_text, last_pair_morph, mark='_x'):
             result = {}
 
-            for pos_combination in self.fpos_combinations:
+            for pos_combination in self._FPOS_COMBINATIONS:
                 result['first_' + pos_combination + mark] = int(pos_combination == first_pair_morph)
                 result['last_' + pos_combination + mark] = int(pos_combination == last_pair_morph)
 
-            for key in self.pairs_words:
+            for key in self._PAIRS_MARKERS:
                 if mark == key[-2:]:
                     if key[:-2] == 'first_pair':
-                        for word in self.pairs_words[key]:
-                            result[key[:-1] + word + mark] = int(bool(re.findall(word, first_pair_text, re.IGNORECASE)))
+                        for word in self._PAIRS_MARKERS[key]:
+                            try:
+                                result[key[:-1] + word.pattern + mark] = int(bool(word.search(first_pair_text)))
+                            except:
+                                if self._verbose == 2:
+                                    print("Broken marker:", word.pattern)
                     else:
-                        for word in self.pairs_words[key]:
-                            result[key[:-1] + word + mark] = int(bool(re.findall(word, last_pair_text, re.IGNORECASE)))
+                        for word in self._PAIRS_MARKERS[key]:
+                            try:
+                                result[key[:-1] + word.pattern + mark] = int(bool(word.search(last_pair_text)))
+                            except:
+                                if self._verbose == 2:
+                                    print("Broken marker:", word.pattern)
 
             return result
 
         # snippet X
-        first_pair_text_x = ' '.join([token for token in row.tokens_x[:2]]).lower()
+        first_pair_text_x = ' '.join([token.text for token in row.snippet_x_tokens[:2]]).lower()
         first_pair_morph_x = '_'.join(self._first_postags(row.snippet_x_locs))
 
-        if len(row.tokens_x) > 2:
-            last_pair_text_x = ' '.join([token for token in row.tokens_x[-2:]]).lower()
+        if len(row.snippet_x_tokens) > 2:
+            last_pair_text_x = ' '.join([token.text for token in row.snippet_x_tokens[-2:]]).lower()
             last_pair_morph_x = '_'.join(self._last_postags(row.snippet_x_locs))
         else:
             last_pair_text_x = ' '
@@ -635,11 +580,11 @@ class FeaturesProcessor:
                                                          '_x')
 
         # snippet Y
-        first_pair_text_y = ' '.join([token for token in row.tokens_y[:2]]).lower()
+        first_pair_text_y = ' '.join([token.text for token in row.snippet_y_tokens[:2]]).lower()
         first_pair_morph_y = '_'.join(self._first_postags(row.snippet_y_locs))
 
-        if len(row.tokens_y) > 2:
-            last_pair_text_y = ' '.join([token for token in row.tokens_y[-2:]]).lower()
+        if len(row.snippet_y_tokens) > 2:
+            last_pair_text_y = ' '.join([token.text for token in row.snippet_y_tokens[-2:]]).lower()
             last_pair_morph_y = '_'.join(self._last_postags(row.snippet_y_locs))
 
         else:
@@ -711,37 +656,70 @@ class FeaturesProcessor:
         df_embed_x = df.lemmas_x.apply(mean_vector).values.tolist()
         df_embed_y = df.lemmas_y.apply(mean_vector).values.tolist()
         embeddings = pd.DataFrame(df_embed_x).merge(pd.DataFrame(df_embed_y), left_index=True, right_index=True)
-        embeddings['cos_embed_dist'] = paired_cosine_distances(df_embed_x, df_embed_y)
-        embeddings['eucl_embed_dist'] = paired_euclidean_distances(df_embed_x, df_embed_y)
+        embeddings['cos_embed_dist'] = paired_distances(df_embed_x, df_embed_y, metric='cosine')
+        embeddings['eucl_embed_dist'] = paired_distances(df_embed_x, df_embed_y, metric='euclidian')
         df = pd.concat([df.reset_index(drop=True), embeddings.reset_index(drop=True)], axis=1)
 
         return df
 
-    def _get_sentiments(self, df):
-        try:
-            temp = df.snippet_x.map(lambda row: self.sentiment_model.predict([row]))
-        except:
-            temp = df.snippet_x.map(lambda row: [{'positive': 0., 'negative': 0.}])
+    def _get_sentiments_dostoevsky(self, df):
+        """ Use dostoevsky library for fast sentiment prediction in Russian
 
-        for key in ['positive', 'negative']:
-            df['sm_x_' + key] = temp.map(lambda row: row[0].get(key))
+        Args:
+            df (pandas.DataFrame): the whole dataframe
 
-        try:
-            temp = df.snippet_y.map(lambda row: self.sentiment_model.predict([row]))
-        except:
-            temp = df.snippet_y.map(lambda row: [{'positive': 0., 'negative': 0.}])
+        Returns:
+            df (pandas.DataFrame): the dataframe with additional columns:
+                                   sm_x_positive, sm_x_negative, sm_y_positive, sm_y_negative
+        """
+        for part in ('x', 'y'):
+            try:
+                temp = df[f'snippet_{part}'].map(lambda row: self._dost_sentiment_model.predict([row]))
+            except:
+                temp = df[f'snippet_{part}'].map(lambda row: [{}])
 
-        for key in ['positive', 'negative']:
-            df['sm_y_' + key] = temp.map(lambda row: row[0].get(key))
+            for key in ['positive', 'negative']:
+                df[f'sm_{part}_' + key] = temp.map(lambda row: row[0].get(key, 0.))
 
         return df
 
+    def _get_sentiment_textblob(self, df):
+        """ Use textblob library for fast sentiment prediction in English
+
+        Args:
+            df (pandas.DataFrame): the whole dataframe
+
+        Returns:
+            df (pandas.DataFrame): the dataframe with additional columns:
+                                   sm_x_positive, sm_x_negative, sm_y_positive, sm_y_negative
+        """
+
+        x_blob = df.snippet_x_tokens.map(lambda row: TextBlob(' '.join([token.text for token in row])).sentiment)
+        y_blob = df.snippet_y_tokens.map(lambda row: TextBlob(' '.join([token.text for token in row])).sentiment)
+
+        df['x_polarity'] = x_blob.map(lambda row: row.polarity)
+        df['x_subjectivity'] = x_blob.map(lambda row: row.subjectivity)
+
+        df['y_polarity'] = y_blob.map(lambda row: row.polarity)
+        df['y_subjectivity'] = y_blob.map(lambda row: row.subjectivity)
+
+        return df
+
+    def _vectorize_with_use(self, df):
+
+        x_encoded = self._universal_encoder(df.snippet_x.values.tolist())
+        y_encoded = self._universal_encoder(df.snippet_y.values.tolist())
+        df['use_cossim'] = 1. - paired_distances(x_encoded, y_encoded, metric='cosine')
+        df['use_eucl'] = paired_distances(x_encoded, y_encoded, metric=spatial.distance.euclidean)
+        df['use_canberra'] = paired_distances(x_encoded, y_encoded, metric=spatial.distance.canberra)
+
+        return pd.concat([df.reset_index(), pd.DataFrame(np.hstack([x_encoded, y_encoded])).add_prefix('use_')], axis=1)
+
 
 class FeaturesProcessorTokenizer(FeaturesProcessor):
-    def __init__(self, model_dir_path, verbose=0):
-        super(FeaturesProcessorTokenizer, self).__init__(model_dir_path=model_dir_path,
-                                                         verbose=verbose,
-                                                         use_w2v=False,
-                                                         use_sentiment=True,
+    def __init__(self, verbose=0):
+        super(FeaturesProcessorTokenizer, self).__init__(verbose=verbose,
                                                          use_markers=False,
-                                                         use_morphology=False)
+                                                         use_morphology=False,
+                                                         use_use=False,
+                                                         use_sentiment=False)

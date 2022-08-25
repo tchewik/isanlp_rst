@@ -1,0 +1,27 @@
+<rst>
+	<header>
+		<relations>
+			<rel name="condition" type="rst" />
+			<rel name="cause-effect" type="rst" />
+			<rel name="condition" type="rst" />
+			<rel name="joint" type="multinuc" />
+			<rel name="antithesis" type="multinuc" />
+			<rel name="elaboration" type="rst" />
+		</relations>
+	</header>
+	<body>
+		<segment id="8" parent="10" relname="joint">Парацетамол является широко распространённым центральным ненаркотическим анальгетиком,</segment>
+		<segment id="9" parent="10" relname="joint">обладает довольно слабыми противовоспалительными свойствами.</segment>
+		<segment id="11" parent="12" relname="condition">Вместе с тем при приёме больших доз</segment>
+		<segment id="12" parent="13" relname="span">может вызывать нарушения работы печени, кровеносной системы и почек.</segment>
+		<segment id="14" parent="16" relname="span">Риски нарушений работы данных органов и систем увеличивается</segment>
+		<segment id="15" parent="14" relname="condition">при одновременном принятии спиртного,</segment>
+		<segment id="17" parent="18" relname="span">поэтому лицам, употребляющим алкоголь, рекомендуют употреблять пониженную дозу парацетамола.</segment>
+		<group id="10" type="multinuc" parent="20" relname="joint"/>
+		<group id="19" type="span" parent="20" relname="joint"/>
+		<group id="13" type="span" parent="19" relname="span"/>
+		<group id="18" type="span" parent="13" relname="elaboration"/>
+		<group id="16" type="span" parent="17" relname="cause-effect"/>
+		<group id="20" type="multinuc"/>
+	</body>
+</rst>

@@ -4,6 +4,7 @@ from isanlp import PipelineCommon
 
 def create_pipeline(delay_init):
     pipeline_default = PipelineCommon([(ProcessorRST(model_dir_path='/models',
+                                                     language='ru',
                                                      segmenter_type='lstm',
                                                      span_predictor_type='ensemble',
                                                      label_predictor_type='ensemble'),
