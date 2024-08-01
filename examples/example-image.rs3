@@ -1,0 +1,34 @@
+<rst>
+	<header>
+		<relations>
+			<rel name="antithesis" type="multinuc"/>
+			<rel name="context" type="rst"/>
+			<rel name="elaboration" type="rst"/>
+			<rel name="joint" type="multinuc"/>
+		</relations>
+	</header>
+	<body>
+		<segment id="1" parent="13" relname="span">On Saturday , in the ninth edition of the T 20 Men ' s Cricket World Cup , Team India won against South Africa by seven runs .</segment>
+		<segment id="2" parent="1" relname="elaboration">The final match was played at the Kensington Oval Stadium in Barbados .</segment>
+		<segment id="3" parent="14" relname="span">This marks India ' s second win in the T 20 World Cup ,</segment>
+		<segment id="4" parent="3" relname="elaboration">which was co - hosted by the West Indies and the USA between June 2 and June 29 .</segment>
+		<segment id="5" parent="17" relname="context">After winning the toss ,</segment>
+		<segment id="6" parent="17" relname="joint">India decided to bat first</segment>
+		<segment id="7" parent="17" relname="joint">and scored 176 runs for the loss of seven wickets .</segment>
+		<segment id="8" parent="18" relname="joint">Virat Kohli top - scored with 76 runs ,</segment>
+		<segment id="9" parent="19" relname="joint">followed by Axar Patel with 47 runs .</segment>
+		<segment id="10" parent="20" relname="joint">Hardik Pandya took three wickets ,</segment>
+		<segment id="11" parent="20" relname="joint">and Jasprit Bumrah took two wickets .</segment>
+		<group id="12" type="span" parent="21" relname="joint"/>
+		<group id="13" type="span" parent="12" relname="span"/>
+		<group id="14" type="span" parent="13" relname="elaboration"/>
+		<group id="15" type="span" parent="21" relname="joint"/>
+		<group id="16" type="span" parent="15" relname="span"/>
+		<group id="17" type="multinuc" parent="16" relname="span"/>
+		<group id="18" type="multinuc" parent="16" relname="elaboration"/>
+		<group id="19" type="multinuc" parent="18" relname="joint"/>
+		<group id="20" type="multinuc" parent="19" relname="joint"/>
+		<group id="21" type="multinuc" />
+	</body>
+</rst>
+Set-Cookie: userid=obe__-sN4PgBIzDob5GJomhx5IVePuYaN12DbThvzYPS7Aayx-urdAS_YmDd0y_z9mXc416FXa1bwDd4bZlnD9rZrc5fyoe__

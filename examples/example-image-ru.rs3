@@ -1,0 +1,52 @@
+<rst>
+	<header>
+		<relations>
+			<rel name="adversative" type="rst"/>
+			<rel name="antithesis" type="multinuc"/>
+			<rel name="attribution" type="rst"/>
+			<rel name="causal" type="rst"/>
+			<rel name="context" type="rst"/>
+			<rel name="elaboration" type="rst"/>
+			<rel name="joint" type="multinuc"/>
+			<rel name="organization" type="rst"/>
+		</relations>
+	</header>
+	<body>
+		<segment id="1" parent="2" relname="adversative">Секрет долголетия прост , уважаемые ,</segment>
+		<segment id="2" parent="19" relname="span">но не всем он понравится .</segment>
+		<segment id="3" parent="21" relname="span">10 июля женщине из Алабамы по имени Хелен Дания исполнилось 108 лет .</segment>
+		<segment id="4" parent="22" relname="span">Ее день рождения отпраздновали вечеринкой в доме престарелых в Бирмингеме ,</segment>
+		<segment id="5" parent="4" relname="elaboration">где живет бабуля .</segment>
+		<segment id="6" parent="24" relname="span">Оказалось , что голова у нее все еще ясная ,</segment>
+		<segment id="7" parent="6" relname="elaboration">по крайней мере , она не растеряла чувства юмора .</segment>
+		<segment id="8" parent="28" relname="attribution">Хелен сказала ,</segment>
+		<segment id="9" parent="28" relname="span">что чувствует себя молодо</segment>
+		<segment id="10" parent="9" relname="elaboration">— как в 107 .</segment>
+		<segment id="11" parent="29" relname="span">А ощущение юности и бодрости духа она сохраняет</segment>
+		<segment id="12" parent="30" relname="joint">благодаря тому , что « пьет вино ,</segment>
+		<segment id="13" parent="31" relname="joint">ест десерты</segment>
+		<segment id="14" parent="31" relname="joint">и флиртует с усатыми мужчинами » .</segment>
+		<segment id="15" parent="32" relname="span">« Чувствую себя хорошо .</segment>
+		<segment id="16" parent="34" relname="span">Найдете меня тут же ,</segment>
+		<segment id="17" parent="16" relname="context">когда мне будет 110 » ,</segment>
+		<segment id="18" parent="34" relname="attribution">— хвастается Хелен .</segment>
+		<group id="19" type="span" parent="20" relname="organization"/>
+		<group id="20" type="span" parent="35" relname="span"/>
+		<group id="21" type="span" parent="23" relname="context"/>
+		<group id="22" type="span" parent="3" relname="elaboration"/>
+		<group id="23" type="multinuc" parent="20" relname="span"/>
+		<group id="24" type="span" parent="23" relname="joint"/>
+		<group id="25" type="multinuc" parent="23" relname="joint"/>
+		<group id="26" type="multinuc" parent="25" relname="joint"/>
+		<group id="27" type="span" parent="26" relname="joint"/>
+		<group id="28" type="span" parent="27" relname="span"/>
+		<group id="29" type="span" parent="26" relname="joint"/>
+		<group id="30" type="multinuc" parent="11" relname="causal"/>
+		<group id="31" type="multinuc" parent="30" relname="joint"/>
+		<group id="32" type="span" parent="25" relname="joint"/>
+		<group id="33" type="span" parent="15" relname="elaboration"/>
+		<group id="34" type="span" parent="33" relname="span"/>
+		<group id="35" type="span" />
+	</body>
+</rst>
+Set-Cookie: userid=t6___-sN4PgBIzDob5YJAmxt7IUZ6ymb1-uBbThTGZa127aU1YNmcAnYwb4c4Af_p7wb5h_Bna4p1Ld4YwAbD7vBaUE-wse__
