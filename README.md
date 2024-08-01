@@ -1,157 +1,147 @@
-![Python 3.8](https://img.shields.io/badge/python-3.8-green.svg)
+![Python 3.10](https://img.shields.io/badge/python-3.10-green.svg)
 
 # IsaNLP RST Parser
 
-This Python 3 library provides RST parser for Russian based on neural network models trained
-on [RuRSTreebank](https://rstreebank.ru/) Russian discourse corpus. The parser should be used in conjunction
-with [IsaNLP library](https://github.com/IINemo/isanlp) and can be considered its module.
+This library provides several versions of the Rhetorical Structure Theory (RST) parser for English and Russian. Below, you will find instructions on how to set up and run the parser either locally or using Docker.
 
-## Installation
+## Performance
 
-1. Install IsaNLP library:
+The parser supports multiple languages and corpora. The end-to-end performance metrics for different model versions across various corpora are as follows:
 
-```
-pip install git+https://github.com/IINemo/isanlp.git
-```  
+### Corpora
+- **English:** GUM<sub>9.1</sub>, RST-DT
+- **Russian:** RRT<sub>2.1</sub>, RRG<sub>GUM-9.1</sub>
 
-2. Deploy docker containers for syntax and discourse parsing:
+| Tag / Version | Language   | Train Data  | Test Data   | Seg  | S    | N    | R    | Full  |
+|-------------|------------|-------------|-------------|------|------|------|------|-------|
+| `gumrrg` | En, Ru     | GUM, RRG    | GUM         | 95.5 | 67.4 | 56.2 | 49.6 | 48.7  |
+|             |            |             | RRG         | 97.0 | 67.1 | 54.6 | 46.5 | 45.4  |
+| `rstdt`     | En         | RST-DT      | RST-DT      | 97.8 | 75.6 | 65.0 | 55.6 | 53.9  |
+| `rstreebank` | Ru         | RRT         | RRT         | 92.1 | 66.2 | 53.1 | 46.1 | 46.2  |
 
-```
-docker run --rm -d -p 3334:3333 --name spacy_ru tchewik/isanlp_spacy:ru
-docker run --rm -d -p 3335:3333 --name rst_ru tchewik/isanlp_rst:2.1-rstreebank
-```  
 
-3. Connect from python using `PipelineCommon`:
+## Local Setup
 
-```python
-from isanlp import PipelineCommon
-from isanlp.processor_remote import ProcessorRemote
-from isanlp.processor_razdel import ProcessorRazdel
+To use the IsaNLP RST Parser locally, follow these steps:
 
-# put the address here ->
-address_syntax = ('', 3334)
-address_rst = ('', 3335)
+1. **Installation:**
 
-ppl_ru = PipelineCommon([
-    (ProcessorRazdel(), ['text'],
-     {'tokens': 'tokens',
-      'sentences': 'sentences'}),
-    (ProcessorRemote(address_syntax[0], address_syntax[1], '0'),
-     ['tokens', 'sentences'],
-     {'lemma': 'lemma',
-      'morph': 'morph',
-      'syntax_dep_tree': 'syntax_dep_tree',
-      'postag': 'postag'}),
-    (ProcessorRemote(address_rst[0], address_rst[1], 'default'),
-     ['text', 'tokens', 'sentences', 'postag', 'morph', 'lemma', 'syntax_dep_tree'],
-     {'rst': 'rst'})
-])
+   First, install the `isanlp` and `isanlp_rst` libraries using pip:
 
-text = ("Парацетамол является широко распространённым центральным ненаркотическим анальгетиком, обладает довольно "
-        "слабыми противовоспалительными свойствами. Вместе с тем при приёме больших доз может вызывать нарушения "
-        "работы печени, кровеносной системы и почек. Риски нарушений работы данных органов и систем "
-        "увеличивается при одновременном принятии спиртного, поэтому лицам, употребляющим алкоголь, рекомендуют "
-        "употреблять пониженную дозу парацетамола.")
+   ```bash
+   pip install git+https://github.com/iinemo/isanlp.git
+   pip install isanlp_rst
+   ```
 
-res = ppl_ru(text)
-```   
+2. **Usage:**
 
-4. The `res` variable should contain all annotations including RST annotations stored in `res['rst']`; each tree
-   anotation in list represents one or more paragraphs of the given text.
+    Below is an example of how to run a specific version of the parser using the library:
 
-```
-{'text': 'Парацетамол является широко распространённым ...',
- 'tokens': [<isanlp.annotation.Token at 0x7f833dee0910>, ...],
- 'sentences': [<isanlp.annotation.Sentence at 0x7f833dee07d0>, ...],
- 'lemma': [['парацетамол', 'являться', ...], ...],
- 'morph': [[{'Animacy': 'Inan', 'Case': 'Nom', ...}, ...], ...],
- 'syntax_dep_tree': [[<isanlp.annotation.WordSynt at 0x7f833deddc10>, ...], ...],
- 'postag': [['NOUN', ...], ...],
- 'rst': [<isanlp.annotation_rst.DiscourseUnit at 0x7f833defa5d0>]}
-```
+   ```python
+   from isanlp_rst.parser import Parser
 
-5. The variable `res['rst']` can be visualized as:  
+   # Define the version of the model you want to use
+   version = 'gumrrg'  # Choose from {'gumrrg', 'rstdt', 'rstreebank'}
+   
+   # Initialize the parser with the desired version
+   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3', hf_model_version=version, cuda_device=0)
 
-   <img src="examples/paracetamol_wiki.png" width="700">
+   # Example text for parsing
+   text = """
+   On Saturday, in the ninth edition of the T20 Men's Cricket World Cup, Team India won against South Africa by seven runs. 
+   The final match was played at the Kensington Oval Stadium in Barbados. This marks India's second win in the T20 World Cup, 
+   which was co-hosted by the West Indies and the USA between June 2 and June 29.
 
-6. To convert a list of DiscourseUnit objects to *.rs3 file with visualization, run:
+   After winning the toss, India decided to bat first and scored 176 runs for the loss of seven wickets. 
+   Virat Kohli top-scored with 76 runs, followed by Axar Patel with 47 runs. Hardik Pandya took three wickets, 
+   and Jasprit Bumrah took two wickets.
+   """
 
-```python
-from isanlp.annotation_rst import ForestExporter
+   # Parse the text to obtain the RST tree
+   res = parser(text)  # res['rst'] contains the binary discourse tree
 
-exporter = ForestExporter(encoding='utf8')
-exporter(res['rst'], 'filename.rs3')
-```
+   # Display the structure of the RST tree
+   vars(res['rst'][0])
+   ```
+   
+   <img src="examples/example-image.png" alt="Illustration of En parsing" width="600">
 
-## Package overview
+3. **Output Explanation:**
 
-1. The discourse parser. Is implemented in `ProcessorRST` class. Path: `src/isanlp_rst/processor_rst.py`.
-2. Trained neural network models for RST parser: models for segmentation, structure prediction, and label prediction.
-   Path: `models`.
-3. Docker container [tchewik/isanlp_rst](https://hub.docker.com/r/tchewik/isanlp_rst/) with preinstalled
-   libraries and models. Use the command: `docker run --rm -p 3335:3333 tchewik/isanlp_rst`
+   The output is an RST tree with the following structure:
 
-## Usage
+   ```python
+   {
+     'id': 7,
+     'left': <isanlp.annotation_rst.DiscourseUnit at 0x7f771076add0>,
+     'right': <isanlp.annotation_rst.DiscourseUnit at 0x7f7750b93d30>,
+     'relation': 'elaboration',
+     'nuclearity': 'NS',
+     'start': 0,
+     'end': 336,
+     'text': "On Saturday, ... took two wickets .",
+   }
+   ```
 
-The usage example is available in `examples/usage.ipynb`.
+   - **id**: Unique identifier for the discourse unit.
+   - **left** and **right**: Children of the current discourse unit.
+   - **relation**: Rhetorical relation between sub-units (e.g., "elaboration").
+   - **nuclearity**: Indicates nuclearity of the relation (e.g., "NS" for nucleus-satellite).
+   - **start** and **end**: Character offsets in the text for this discourse unit.
+   - **text**: Text span corresponding to this discourse unit.
 
-### RST data structures
+4. **(Optional) Save the result in RS3 format:**
 
-The results of RST parser are stored in a list of `isanlp.annotation_rst.DiscourseUnit` objects. Each object represents
-a tree for a paragraph or multiple paragraphs of a text.
-DiscourseUnit objects have the following members:
+   You can save the resulting RST tree in an RS3 file using the following command:
 
-* id (int): id of a discourse unit.
-* start (int): starting position (in characters) of a current discourse unit span in original text.
-* end (int): ending position (in characters) of a current discourse unit span in original text.
-* relation (string): 'elementary' if the current unit is a discourse tree leaf, or RST relation.
-* nuclearity (string): nuclearity orientation for current unit. `_` for elementary discourse units or one of `NS`, `SN`
-  , `NN` for non-elementary units.
-* left (DiscourseUnit or None): left child node of a non-elementary unit.
-* right (DiscourseUnit or None): right child node of a non-elementary unit.
-* proba (float): probability of the node presence obtained from structure classifier.
+   ```python
+   res['rst'][0].to_rs3('filename.rs3')
+   ```
 
-It is possible to operate with DiscourseUnits objects as binary structures. For example, to extract relations pairs from
-the tree like this:
+   The `filename.rs3` file can be opened in RSTTool or rstWeb for visualization or editing.
 
-```python
-def extr_pairs(tree, text):
-    pp = []
-    if tree.left:
-        pp.append([text[tree.left.start:tree.left.end],
-                   text[tree.right.start:tree.right.end],
-                   tree.relation, tree.nuclearity])
-        pp += extr_pairs(tree.left, text)
-        pp += extr_pairs(tree.right, text)
-    return pp
+## Docker Setup
 
-print(extr_pairs(res['rst'][0], res['text']))
-# [['Президент Филиппин заявил,', 'что поедет на дачу, если будут беспорядки.', 'attribution', 'SN'], 
-# ['что поедет на дачу,', 'если будут беспорядки.', 'condition', 'NS']]
-```  
+To run the IsaNLP RST Parser using Docker, follow these steps:
 
-# Cite
+1. **Run the Docker container:**
 
-https://link.springer.com/chapter/10.1007/978-3-030-72610-2_8
+   Pull and run the Docker container with the desired model version tag:
 
-* Gost:
-  Chistova E., Shelmanov A., Pisarevskaya D., Kobozeva M. and Isakov V., Panchenko A., Toldova S. and Smirnov I. RST
-  Discourse Parser for Russian: An Experimental Study of Deep Learning Models // Proceedings of Analysis of Images,
-  Social Networks and Texts (AIST). — 2020. — P. 105-119.
+   ```bash
+   docker run --rm -p 3335:3333 --name rst_rrt tchewik/isanlp_rst:3.0-rstreebank
+   ```
 
-* BibTeX:
+2. **Connect using the IsaNLP Python library:**
 
-```
-@inproceedings{chistova2020rst,
-  title={{RST} Discourse Parser for {R}ussian: An Experimental Study of Deep Learning Models},
-  author={Chistova, Elena and Shelmanov, Artem and Pisarevskaya, Dina and Kobozeva, Maria and Isakov, Vadim  and Panchenko, Alexander  and Toldova, Svetlana  and Smirnov, Ivan },
-  booktitle={In Proceedings of Analysis of Images, Social Networks and Texts (AIST)},
-  pages={105--119},
-  year={2020}
-}
-```
+   Install the `isanlp` library. The `isanlp_rst` library is not required for dockerized parsers:
 
-* Springer:
-  Chistova E. et al. (2021) RST Discourse Parser for Russian: An Experimental Study of Deep Learning Models. In: van der
-  Aalst W.M.P. et al. (eds) Analysis of Images, Social Networks and Texts. AIST 2020. Lecture Notes in Computer Science,
-  vol 12602. Springer, Cham. https://doi.org/10.1007/978-3-030-72610-2_8  
+   ```bash
+   pip install git+https://github.com/iinemo/isanlp.git
+   ```
+
+   Then connect to the running Docker container:
+
+   ```python
+   from isanlp import PipelineCommon
+   from isanlp.processor_remote import ProcessorRemote
+
+   # Put the container address here
+   address_rst = ('127.0.0.1', 3335)
+
+   ppl = PipelineCommon([
+       (ProcessorRemote(address_rst[0], address_rst[1], 'default'),
+        ['text'],
+        {'rst': 'rst'})
+   ])
+
+   res = ppl(text)
+   # res['rst'] will contain the binary discourse tree, similar to the previous example
+   ```
+
+   
+## Citation
+
+If you use the IsaNLP RST Parser in your research, please cite our work as follows:
+
+- **For versions `gumrrg`, `rstdt`, and `rstreebank`:** `TBA`
