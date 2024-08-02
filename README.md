@@ -64,10 +64,6 @@ To use the IsaNLP RST Parser locally, follow these steps:
    vars(res['rst'][0])
    ```
    
-   <img src="examples/example-image.png" alt="Illustration of En parsing" width="600">
-
-3. **Output Explanation:**
-
    The output is an RST tree with the following structure:
 
    ```python
@@ -90,7 +86,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
    - **start** and **end**: Character offsets in the text for this discourse unit.
    - **text**: Text span corresponding to this discourse unit.
 
-4. **(Optional) Save the result in RS3 format:**
+3. **(Optional) Save the result in RS3 format:**
 
    You can save the resulting RST tree in an RS3 file using the following command:
 
@@ -99,6 +95,8 @@ To use the IsaNLP RST Parser locally, follow these steps:
    ```
 
    The `filename.rs3` file can be opened in RSTTool or rstWeb for visualization or editing.
+   <img src="examples/example-image.png" alt="Illustration of En parsing" width="600">
+
 
 ## Docker Setup
 
