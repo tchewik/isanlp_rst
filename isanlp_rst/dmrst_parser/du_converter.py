@@ -17,7 +17,7 @@ class DUConverter:
             List of the predictions as isanlp.DiscourseUnit objects.
         """
 
-        #with open(self.predictions_path, 'rb') as f:
+        # with open(self.predictions_path, 'rb') as f:
         #    predictions = pickle.load(f)
 
         data = []
@@ -29,6 +29,9 @@ class DUConverter:
             edus = self._lists_to_isanlp_format(tokens=self.predictions['tokens'][i],
                                                 edu_breaks=self.predictions['edu_breaks'][i],
                                                 gold_tokens=gold_tokens)
+            if len(edus) == 1:
+                return edus
+
             self.du_id = len(edus)
             rels = self._tree_string_to_list(self.predictions['spans'][i][0])
             tree = self.construct_tree(0, edus, rels)
