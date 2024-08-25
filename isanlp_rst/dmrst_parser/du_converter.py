@@ -184,3 +184,6 @@ class DUConverter:
                              end=right.end,
                              text=left.text + ' ' + right.text)
 
+    @staticmethod
+    def dummy_tree(tokens):
+        return DiscourseUnit(id=0, text=' '.join(tokens), relation='elementary', start=0, end=len(' '.join(tokens)))
