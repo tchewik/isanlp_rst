@@ -238,6 +238,15 @@ class Predictor:
 
         return batches
 
+    def _collect_tokens(self, tree):
+        tokens = []
+        begin = 0
+        for token in tree.text.split(' '):
+            tokens.append(Token(text=token, begin=begin, end=begin + len(token)))
+            begin += len(token) + 1
+
+        return tokens
+
     def parse_rst(self, text: str):
         """
         Parses the given text to generate a tree of rhetorical structure.
@@ -246,23 +255,17 @@ class Predictor:
             text (str): The input text to be parsed.
 
         Returns:
-            The tree representing the rhetorical structure based on the input text.
+            dict: Tokens and a tree representing the rhetorical structure based on the input text.
         """
-
-        #current_hash = self._get_hash(text)
-
-        ## Check if the parsed data for the given text already exists
-        #if self._rst_data:
-        #    if current_hash in self._rst_data:
-        #        return self._rst_data[current_hash]
 
         # Preprocess the text
         _text = text.replace('-', ' - ').replace('—', ' — ').replace('  ', ' ')
         _text = _text.replace('...', '…').replace('_', ' ')
 
         # Prepare the input data
+        tokenized_text = [token.text for token in razdel.tokenize(_text)]
         data = {
-            'input_sentences': [[token.text for token in razdel.tokenize(_text)]],
+            'input_sentences': [tokenized_text],
             'edu_breaks': [[]],
             'decoder_input': [[]],
             'relation_label': [[]],
@@ -270,11 +273,16 @@ class Predictor:
             'golden_metric': [[]],
         }
 
-        if len(data['input_sentences'][0]) < 3:
-            return DUConverter.dummy_tree(data['input_sentences'][0])
+        if len(tokenized_text) < 3:
+            tree = DUConverter.dummy_tree(tokenized_text)
+
+            return {
+                'tokens': self._collect_tokens(tree),
+                'rst': [tree]
+            }
 
         # Initialize predictions dictionary
-        input = Data(**data)
+        input_data = Data(**data)
 
         predictions = {
             'tokens': [],
@@ -285,7 +293,7 @@ class Predictor:
         }
 
         # Tokenize the input for the transformer
-        batch = self.tokenize(input)
+        batch = self.tokenize(input_data)
 
         # Perform forward pass
         with torch.no_grad():
@@ -307,13 +315,8 @@ class Predictor:
         duc = DUConverter(predictions, tokenization_type='default')
         tree = duc.collect()[0]
 
-        tokens = []
-        begin = 0
-        for token in tree.text.split(' '):
-            tokens.append(Token(text=token, begin=begin, end=begin + len(token)))
-            begin += len(token) + 1
 
         return {
-            'tokens': tokens,
+            'tokens': self._collect_tokens(tree),
             'rst': [tree]
         }
