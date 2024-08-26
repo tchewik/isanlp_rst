@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='isanlp_rst',
-    version='3.0.1a4',
+    version='3.0.1a5',
     description='IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',

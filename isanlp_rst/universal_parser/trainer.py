@@ -14,11 +14,11 @@ from torch.optim import Adam
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 
-from universal_parser.data_manager import DataManager
-from universal_parser.src.config_reader import ConfigReader
-from universal_parser.src.parser.data import Data
-from universal_parser.src.parser.parsing_net import ParsingNet
-from universal_parser.src.parser.training_manager import TrainingManager
+from isanlp_rst.universal_parser.data_manager import DataManager
+from isanlp_rst.universal_parser.src.config_reader import ConfigReader
+from isanlp_rst.universal_parser.src.parser.data import Data
+from isanlp_rst.universal_parser.src.parser.parsing_net import ParsingNet
+from isanlp_rst.universal_parser.src.parser.training_manager import TrainingManager
 
 
 class Trainer:

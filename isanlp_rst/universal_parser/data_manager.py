@@ -9,10 +9,10 @@ from pathlib import Path
 import fire
 from tqdm import tqdm
 
-from universal_parser.src.corpus.binary_tree import BinaryTree
-from universal_parser.src.corpus.data import Rs3Document
-from universal_parser.src.parser.data import Data
-from universal_parser.src.parser.data import RelationTableGUM, RelationTableRSTDT, RelationTableRuRSTB
+from isanlp_rst.universal_parser.src.corpus.binary_tree import BinaryTree
+from isanlp_rst.universal_parser.src.corpus.data import Rs3Document
+from isanlp_rst.universal_parser.src.parser.data import Data
+from isanlp_rst.universal_parser.src.parser.data import RelationTableGUM, RelationTableRSTDT, RelationTableRuRSTB
 
 random.seed(42)
 
