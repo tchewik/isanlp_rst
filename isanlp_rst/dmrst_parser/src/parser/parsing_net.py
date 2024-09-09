@@ -947,6 +947,62 @@ class ParsingNet(nn.Module):
 
         return img
 
+    def infer_step(self, input_data, prev_decision):
+        """
+        Perform a single inference step for ParsingNet. This step involves predicting
+        both the EDU split point and the relation label for the current step in parsing.
+
+        :param input_data: Input data containing sentence tokens, entity ids, EDU breaks, etc.
+        :param prev_decision: The decision (split point) made in the previous step of the parsing process.
+        :return: Tuple containing the predicted split point (logits) and relation label (logits) for the current step.
+        """
+
+        input_sentence = input_data.input_sentences
+        input_sent_breaks = input_data.sent_breaks
+        input_entity_ids = input_data.entity_ids
+        input_entity_position_ids = input_data.entity_position_ids
+        input_edu_breaks = input_data.edu_breaks
+        # dataset_index = input_data.dataset_index
+
+        # Obtain encoder outputs and last hidden states
+        if self.du_encoding_kind == 'bert':
+            encoder_outputs, last_hidden_states, _, predict_edu_breaks, embeddings = self.encoder(
+                input_sentence, input_entity_ids, input_entity_position_ids,
+                input_edu_breaks, sent_breaks=input_sent_breaks, is_test=True)  # , dataset_index=dataset_index)
+        else:
+            encoder_outputs, last_hidden_states, _, predict_edu_breaks = self.encoder(
+                input_sentence, input_entity_ids, input_entity_position_ids,
+                input_edu_breaks, sent_breaks=input_sent_breaks, is_test=True)  # , dataset_index=dataset_index)
+
+        # Prepare current step encoder outputs and decoder hidden states
+        cur_encoder_outputs = encoder_outputs[0][:len(input_edu_breaks[0])]
+        cur_last_hidden_states = last_hidden_states[:, 0, :]
+        cur_decoder_hidden = cur_last_hidden_states.contiguous()
+
+        # Initialize decoder input with previous decision or start with the first EDU
+        if prev_decision is None:
+            cur_decoder_input = cur_encoder_outputs[0].unsqueeze(0)  # Start with the first EDU
+        else:
+            cur_decoder_input = torch.mean(cur_encoder_outputs[prev_decision], keepdim=True, dim=0).unsqueeze(0)
+
+        # Perform a decoding step
+        cur_decoder_output, cur_decoder_hidden = self.decoder(cur_decoder_input, last_hidden=cur_decoder_hidden)
+
+        # Predict the parsing tree break (split point) using the pointer mechanism
+        atten_weights, log_atten_weights = self.pointer(cur_encoder_outputs, cur_decoder_output.squeeze(0))
+
+        # Predict relation label using the classifier
+        input_left = cur_encoder_outputs[prev_decision].unsqueeze(0) if prev_decision is not None else \
+        cur_encoder_outputs[0].unsqueeze(0)
+        input_right = cur_encoder_outputs[-1].unsqueeze(0)
+
+        relation_weights, log_relation_weights = self.label_classifier(input_left, input_right)
+
+        # relation_weights, log_relation_weights = self.label_classifiers[dataset_index](input_left, input_right)
+
+        # Return the predicted split point and relation label (logits)
+        return log_atten_weights, log_relation_weights
+
 
 def construct_tree(spans):
     G = nx.DiGraph()
@@ -1064,4 +1120,5 @@ def matrix_to_image_2chan(matrix1, matrix2, filename, min_val=-2, max_val=0):
     with open(filename, 'wb') as f:
         img = Image.fromarray(img_u8, mode='RGB')
         img.save(f)
-        return img
+
+    return img
