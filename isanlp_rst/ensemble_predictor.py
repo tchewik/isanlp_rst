@@ -72,6 +72,6 @@ class EnsemblePredictor:
 
         # Perform inference using the ensemble
         with torch.no_grad():
-            result = self.ensemble(batch, generate_tree=False)
+            result = self.ensemble(batch, generate_tree=True)
 
         return result
