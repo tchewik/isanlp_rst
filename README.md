@@ -2,7 +2,7 @@
 
 # IsaNLP RST Parser
 
-This library provides several versions of the Rhetorical Structure Theory (RST) parser for English and Russian. Below, you will find instructions on how to set up and run the parser either locally or using Docker.
+This library provides several versions of the Rhetorical Structure (RST) parser for English and Russian. Below, you will find instructions on how to set up and run the parser either locally or using Docker.
 
 ## Performance
 
@@ -142,7 +142,6 @@ To run the IsaNLP RST Parser using Docker, follow these steps:
 
 If you use the IsaNLP RST Parser in your research, please cite our work as follows:
 
-- **For versions `gumrrg`, `rstdt`, and `rstreebank`:** 
   ```bibtex
   @inproceedings{
    chistova-2024-bilingual,
