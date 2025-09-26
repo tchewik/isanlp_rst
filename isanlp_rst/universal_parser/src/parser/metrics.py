@@ -30,7 +30,12 @@ def get_eval_data_parseval(tree_spans: str, edus: list):
     for i in range(len(span_list)):
         temp = span_list[i]
         IDK = re.split(r'[:,=]', temp)
-        nuclearity = IDK[1][0] + IDK[5][0]
+        try:
+            nuclearity = IDK[1][0] + IDK[5][0]
+        except Exception as e:
+            print(f'{temp = }')
+            print(f'{IDK = }')
+            raise e
         relation1 = IDK[2]
         relation2 = IDK[6]
         relation = relation1 if relation1 != 'span' else relation2
@@ -105,8 +110,10 @@ def get_batch_metrics(pred_spans_batch, gold_spans_batch, pred_edu_breaks_batch,
 
     for i in range(len(pred_spans_batch)):
 
-        cur_pred_spans = pred_spans_batch[i][0]
-        cur_gold_spans = gold_spans_batch[i]
+        # Lowercasing in case the casing is different in the relation table
+        cur_pred_spans = pred_spans_batch[i][0].lower()
+        cur_gold_spans = gold_spans_batch[i].lower()
+
         cur_pred_edus = pred_edu_breaks_batch[i]
         cur_gold_edus = gold_edu_breaks_batch[i]
 
@@ -122,7 +129,7 @@ def get_batch_metrics(pred_spans_batch, gold_spans_batch, pred_edu_breaks_batch,
         n_pred_seg += num_pred_seg
         n_correct_seg += num_correct_seg
 
-        if cur_pred_spans != 'NONE' and cur_gold_spans != 'NONE':
+        if cur_pred_spans not in 'none' and cur_gold_spans != 'none':
 
             cur_span_n, cur_relation_n, cur_ns_n, cur_full, cur_sys_n, cur_golden_n = get_measurement(cur_pred_spans,
                                                                                                       cur_gold_spans,
@@ -137,12 +144,12 @@ def get_batch_metrics(pred_spans_batch, gold_spans_batch, pred_edu_breaks_batch,
             n_system += cur_sys_n
             n_golden += cur_golden_n
 
-        elif cur_pred_spans != 'NONE' and cur_gold_spans == 'NONE':
+        elif cur_pred_spans != 'none' and cur_gold_spans == 'none':
             _, _, _, _, cur_sys_n, _ = get_measurement(cur_pred_spans, cur_pred_spans, cur_pred_edus, cur_pred_edus,
                                                        use_org_parseval)
             n_system += cur_sys_n
 
-        elif cur_pred_spans == 'NONE' and cur_gold_spans != 'NONE':
+        elif cur_pred_spans == 'none' and cur_gold_spans != 'none':
             _, _, _, _, _, cur_goldenno = get_measurement(cur_gold_spans, cur_gold_spans, cur_gold_edus, cur_gold_edus,
                                                           use_org_parseval)
             n_golden += cur_goldenno

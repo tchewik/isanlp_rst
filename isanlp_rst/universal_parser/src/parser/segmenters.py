@@ -444,6 +444,8 @@ class ToNySegmenter(nn.Module):
 
         if self.use_crf:
             self.crf = CRF(2, batch_first=True)
+            if self._cuda_device is not None:
+                self.crf.to(self._cuda_device)
         else:
             self.loss_fn = nn.CrossEntropyLoss(weight=torch.Tensor([1.0, 10.0]).to(self._cuda_device))
 

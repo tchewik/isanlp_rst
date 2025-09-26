@@ -102,7 +102,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
      'nuclearity': 'NS',
      'start': 0,
      'end': 336,
-     'text': "On Saturday, ... took two wickets .",
+     'text': "On Saturday, ... took two wickets.",
    }
    ```
 

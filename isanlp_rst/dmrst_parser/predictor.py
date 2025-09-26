@@ -1,9 +1,9 @@
 import json
 import os
+from bisect import bisect_right
 
 import razdel
 import torch
-from isanlp.annotation import Token
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 from huggingface_hub import hf_hub_download
@@ -238,14 +238,61 @@ class Predictor:
 
         return batches
 
-    def _collect_tokens(self, tree):
-        tokens = []
-        begin = 0
-        for token in tree.text.split(' '):
-            tokens.append(Token(text=token, begin=begin, end=begin + len(token)))
-            begin += len(token) + 1
+    @staticmethod
+    def _build_offset_converter(tokens):
+        positions = []
+        originals = []
+        cursor = 0
 
-        return tokens
+        for idx, token in enumerate(tokens):
+            token_text = token.text
+            for char_idx in range(len(token_text)):
+                positions.append(cursor)
+                originals.append(token.start + char_idx)
+                cursor += 1
+
+            positions.append(cursor)
+            originals.append(token.stop)
+
+            if idx != len(tokens) - 1:
+                cursor += 1
+
+        if not positions:
+            positions = [0]
+            originals = [0]
+
+        return positions, originals
+
+    @staticmethod
+    def _map_offset(value, positions, originals):
+        if not positions:
+            return value
+
+        index = bisect_right(positions, value) - 1
+        if index < 0:
+            index = 0
+        elif index >= len(originals):
+            index = len(originals) - 1
+
+        return originals[index]
+
+    def _remap_tree_offsets(self, unit, positions, originals, original_text):
+        left = getattr(unit, 'left', None)
+        right = getattr(unit, 'right', None)
+
+        if left is not None:
+            self._remap_tree_offsets(left, positions, originals, original_text)
+        if right is not None:
+            self._remap_tree_offsets(right, positions, originals, original_text)
+
+        if left is None and right is None:
+            unit.start = self._map_offset(unit.start, positions, originals)
+            unit.end = self._map_offset(unit.end, positions, originals)
+        else:
+            unit.start = left.start if left is not None else self._map_offset(unit.start, positions, originals)
+            unit.end = right.end if right is not None else self._map_offset(unit.end, positions, originals)
+
+        unit.text = original_text[unit.start:unit.end]
 
     def parse_rst(self, text: str):
         """
@@ -258,12 +305,10 @@ class Predictor:
             dict: Tokens and a tree representing the rhetorical structure based on the input text.
         """
 
-        # Preprocess the text
-        _text = text.replace('-', ' - ').replace('—', ' — ').replace('  ', ' ')
-        _text = _text.replace('...', '…').replace('_', ' ')
-
         # Prepare the input data
-        tokenized_text = [token.text for token in razdel.tokenize(_text)]
+        razdel_tokens = list(razdel.tokenize(text))
+        tokenized_text = [token.text for token in razdel_tokens]
+        offset_positions, original_offsets = self._build_offset_converter(razdel_tokens)
         data = {
             'input_sentences': [tokenized_text],
             'edu_breaks': [[]],
@@ -275,9 +320,9 @@ class Predictor:
 
         if len(tokenized_text) < 3:
             tree = DUConverter.dummy_tree(tokenized_text)
+            self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
             return {
-                'tokens': self._collect_tokens(tree),
                 'rst': [tree]
             }
 
@@ -315,8 +360,8 @@ class Predictor:
         duc = DUConverter(predictions, tokenization_type='default')
         tree = duc.collect()[0]
 
+        self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
         return {
-            'tokens': self._collect_tokens(tree),
             'rst': [tree]
         }

@@ -88,13 +88,14 @@ class EncoderRNN(nn.Module):
                                       bidirectional=True, device=self._cuda_device)
 
         self._token_bilstm_hidden = token_bilstm_hidden
-        self._embedding_bilstm = nn.LSTM(word_dim, token_bilstm_hidden, num_layers=1,
-                                         bidirectional=True, device=self._cuda_device)
+        if self._token_bilstm_hidden > 0:
+            self._embedding_bilstm = nn.LSTM(word_dim, token_bilstm_hidden, num_layers=1,
+                                             bidirectional=True, device=self._cuda_device)
 
     @staticmethod
     def _init_weights(layer):
         if type(layer) == nn.Linear:
-            nn.init.xavier_uniform(layer.weight)
+            nn.init.xavier_uniform_(layer.weight)
 
         elif type(layer) == nn.GRU:
             for name, param in layer.named_parameters():
@@ -115,7 +116,7 @@ class EncoderRNN(nn.Module):
     def forward(self, input_tokenized_texts, entity_ids, entity_position_ids,
                 edu_breaks, sent_breaks=None, is_test=False, dataset_index=None):
 
-        if dataset_index and len(self.segmenters) == 1:
+        if dataset_index is not None and len(self.segmenters) == 1:
             # reset the segmenters index if there is only one segmenter
             dataset_index = [0 for _ in range(len(dataset_index))]
 
@@ -419,14 +420,27 @@ class DefaultLabelClassifier(nn.Module):
         self.weight_bilateral = nn.Bilinear(hidden_size, hidden_size, classes_number, bias=bias,
                                             device=cuda_device)
 
+        self._init_weights()
         self._cuda_device = cuda_device
 
-    def forward(self, input_left, input_right, **kwargs):
+    def _init_weights(self):
+        nn.init.xavier_uniform_(self.labelspace_left.weight)
+        nn.init.xavier_uniform_(self.labelspace_right.weight)
+        nn.init.xavier_uniform_(self.weight_left.weight)
+        nn.init.xavier_uniform_(self.weight_right.weight)
+        nn.init.xavier_uniform_(self.weight_bilateral.weight)
+
+    def forward(self, input_left, input_right, mask=None):
         labelspace_left = self.dropout(F.elu(self.labelspace_left(input_left)))
         labelspace_right = self.dropout(F.elu(self.labelspace_right(input_right)))
 
         output = (self.weight_bilateral(labelspace_left, labelspace_right) + self.weight_left(
             labelspace_left) + self.weight_right(labelspace_right))
+
+        if mask is not None:
+            if mask.dim() == 1:
+                mask = mask.unsqueeze(0)
+            output = output.masked_fill(~mask, -1e9)
 
         # Obtain relation weights and log relation weights (for loss)
         relation_weights = F.softmax(output, 1)

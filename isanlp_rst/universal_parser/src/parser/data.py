@@ -75,16 +75,16 @@ def getLabelOrdered(Original_Order):
 
 def nucs_and_rels(label_index, relation_table):
     relation = relation_table[label_index]
-    label, nuclearities = relation.split('_')
+    label, _, nuclearities = relation.rpartition('_')
 
     nuc_left, nuc_right = 'Nucleus', 'Nucleus'
     rel_left, rel_right = label, label
 
-    if nuclearities == 'NS':
+    if nuclearities.lower() == 'ns':
         nuc_right = 'Satellite'
         rel_left = 'span'
 
-    elif nuclearities == 'SN':
+    elif nuclearities.lower() == 'sn':
         nuc_left = 'Satellite'
         rel_right = 'span'
 

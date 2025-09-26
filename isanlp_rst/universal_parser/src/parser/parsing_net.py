@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 import torch
 import torch.nn as nn
-# from PIL import Image
+from PIL import Image
 
 from . import modules
 from . import segmenters
@@ -23,6 +23,7 @@ class ParsingNet(nn.Module):
                  encoder_document_enc_gru=True, encoder_add_first_and_last=True, edu_embedding_compression_rate=1 / 3,
                  classifier_input_size=768, classifier_hidden_size=768, classes_numbers=None, classifier_bias=True,
                  token_bilstm_hidden=100, label_weights=None, corpora_weights=None,
+                 dataset2classifier=None, relation_vocab=None, dataset_masks=None,
                  dropout_e=0.5, dropout_d=0.5, dropout_c=0.5,
                  use_discriminator=False, max_w=190, max_h=20,
                  cuda_device=None, use_amp=False, separated_segmentation=True):
@@ -77,6 +78,8 @@ class ParsingNet(nn.Module):
         self.classifier_hidden_size = classifier_hidden_size
         self.normalize_embeddings = normalize_embeddings
         self.relation_tables = relation_tables
+        self.relation_vocab = relation_vocab if relation_vocab is not None else relation_tables[0]
+        self.dataset_masks = [torch.tensor(m, device=cuda_device, dtype=torch.bool) for m in dataset_masks] if dataset_masks is not None else None
         self.classes_numbers = classes_numbers
         self.classifier_bias = classifier_bias
         self.label_weights = label_weights
@@ -85,6 +88,9 @@ class ParsingNet(nn.Module):
         self._cuda_device = cuda_device
         self.use_amp = use_amp
         self.segmenter_type = segmenter_type
+        if dataset2classifier is None:
+            dataset2classifier = list(range(len(classes_numbers)))
+        self.dataset2classifier = dataset2classifier
 
         if not corpora_weights:
             corpora_weights = [1. for _ in range(len(classes_numbers))]
@@ -92,7 +98,7 @@ class ParsingNet(nn.Module):
 
         if separated_segmentation:
             _segmenters = []
-            for i in range(len(classes_numbers)):
+            for i in range(len(self.dataset2classifier)):
                 if segmenter_type == 'linear':
                     _segmenters.append(segmenters.LinearSegmenter(emb_dim, cuda_device=self._cuda_device))
                 elif segmenter_type == 'tony':
@@ -162,16 +168,21 @@ class ParsingNet(nn.Module):
 
         self.rel_classification_kind = rel_classification_kind
         if rel_classification_kind == 'default':
-
-            label_classifiers = []
-            for i in range(len(classes_numbers)):
-                label_classifiers.append(
-                    modules.DefaultLabelClassifier(classifier_input_size, classifier_hidden_size,
-                                                   classes_numbers[i],
-                                                   bias=True, dropout=dropout_c,
-                                                   cuda_device=self._cuda_device)
-                )
-            self.label_classifiers = nn.ModuleList(label_classifiers)
+            if self.dataset_masks is None:
+                label_classifiers = []
+                for i in range(len(classes_numbers)):
+                    label_classifiers.append(
+                        modules.DefaultLabelClassifier(classifier_input_size, classifier_hidden_size,
+                                                       classes_numbers[i],
+                                                       bias=True, dropout=dropout_c,
+                                                       cuda_device=self._cuda_device)
+                    )
+                self.label_classifiers = nn.ModuleList(label_classifiers)
+            else:
+                self.label_classifier = modules.DefaultLabelClassifier(
+                    classifier_input_size, classifier_hidden_size,
+                    len(self.relation_vocab), bias=True,
+                    dropout=dropout_c, cuda_device=self._cuda_device)
 
         self.max_w = max_w
         self.max_h = max_h
@@ -257,11 +268,17 @@ class ParsingNet(nn.Module):
                         input_left = input_left.unsqueeze(0)
                         input_right = input_right.unsqueeze(0)
 
-                relation_weights, log_relation_weights = \
-                    self.label_classifiers[cur_dataset_index](input_left, input_right)
+                cls_idx = self.dataset2classifier[cur_dataset_index]
+                if self.dataset_masks is not None:
+                    mask = self.dataset_masks[cls_idx]
+                    relation_weights, log_relation_weights = \
+                        self.label_classifier(input_left, input_right, mask=mask)
+                else:
+                    relation_weights, log_relation_weights = \
+                        self.label_classifiers[cls_idx](input_left, input_right)
 
-                loss_label_batch += label_loss_functions[cur_dataset_index](log_relation_weights, cur_label_index
-                                                                            ) * self.corpora_weights[cur_dataset_index]
+                loss_label_batch += label_loss_functions[cls_idx](log_relation_weights, cur_label_index
+                                                                    ) * self.corpora_weights[cur_dataset_index]
                 loop_label_batch += 1
 
             else:
@@ -297,7 +314,8 @@ class ParsingNet(nn.Module):
                                     input_left = input_left.unsqueeze(0)
                                     input_right = input_right.unsqueeze(0)
 
-                            assert cur_parsing_index[j] < stack_head[-1]
+                            assert cur_parsing_index[j] < stack_head[-1], f'{input_texts[i] = }'
+
 
                             # keep the last hidden state consistent.
                             cur_decoder_input = torch.mean(
@@ -305,10 +323,16 @@ class ParsingNet(nn.Module):
                             cur_decoder_output, cur_decoder_hidden = self.decoder(cur_decoder_input,
                                                                                   last_hidden=cur_decoder_hidden)
 
-                            _, log_relation_weights = \
-                                self.label_classifiers[cur_dataset_index](input_left, input_right)
+                            cls_idx = self.dataset2classifier[cur_dataset_index]
+                            if self.dataset_masks is not None:
+                                mask = self.dataset_masks[cls_idx]
+                                _, log_relation_weights = \
+                                    self.label_classifier(input_left, input_right, mask=mask)
+                            else:
+                                _, log_relation_weights = \
+                                    self.label_classifiers[cls_idx](input_left, input_right)
 
-                            loss_label_batch += label_loss_functions[cur_dataset_index](
+                            loss_label_batch += label_loss_functions[cls_idx](
                                 log_relation_weights, cur_label_index[j].unsqueeze(0)
                             ) * self.corpora_weights[cur_dataset_index]
 
@@ -348,10 +372,16 @@ class ParsingNet(nn.Module):
                                 input_left_du, input_right_du = self._encode_du(cur_encoder_outputs, stack_head[0],
                                                                                 cur_parsing_index[j], stack_head[-1])
 
-                            relation_weights, log_relation_weights =\
-                                self.label_classifiers[cur_dataset_index](input_left_du, input_right_du)
+                            cls_idx = self.dataset2classifier[cur_dataset_index]
+                            if self.dataset_masks is not None:
+                                mask = self.dataset_masks[cls_idx]
+                                relation_weights, log_relation_weights = \
+                                    self.label_classifier(input_left_du, input_right_du, mask=mask)
+                            else:
+                                relation_weights, log_relation_weights = \
+                                    self.label_classifiers[cls_idx](input_left_du, input_right_du)
 
-                            loss_label_batch += label_loss_functions[cur_dataset_index](
+                            loss_label_batch += label_loss_functions[cls_idx](
                                 log_relation_weights, cur_label_index[j].unsqueeze(0)
                             ) * self.corpora_weights[cur_dataset_index]
 
@@ -477,7 +507,6 @@ class ParsingNet(nn.Module):
 
                 #  Directly run the classifier to obtain predicted label
                 if self.du_encoding_kind == 'bert':
-                    # print('bert encoded! 324')
                     left_b, middle_b, right_b = 0, edu_breaks[i][0], edu_breaks[i][1]
                     input_left, input_right = self._encode_du_bert(input_sentence[i], edu_breaks[i],
                                                                    left_b, middle_b, right_b, embeddings[i])
@@ -491,8 +520,14 @@ class ParsingNet(nn.Module):
                         input_left = input_left.unsqueeze(0)
                         input_right = input_right.unsqueeze(0)
 
-                relation_weights, log_relation_weights = self.label_classifiers[cur_dataset_index](input_left,
-                                                                                                   input_right)
+                cls_idx = self.dataset2classifier[cur_dataset_index]
+                if self.dataset_masks is not None:
+                    mask = self.dataset_masks[cls_idx]
+                    relation_weights, log_relation_weights = self.label_classifier(
+                        input_left, input_right, mask=mask)
+                else:
+                    relation_weights, log_relation_weights = self.label_classifiers[cls_idx](
+                        input_left, input_right)
 
                 _, topindex = relation_weights.topk(1)
                 label_idx = int(topindex[0][0])
@@ -506,8 +541,12 @@ class ParsingNet(nn.Module):
 
                 if generate_tree:
                     # Generate a span structure: e.g. (1:Nucleus=span:8,9:Satellite=Attribution:12)
-                    nuclearity_left, nuclearity_right, relation_left, relation_right = \
-                        nucs_and_rels(label_idx, self.relation_tables[cur_dataset_index])
+                    if self.dataset_masks is not None:
+                        nuclearity_left, nuclearity_right, relation_left, relation_right = \
+                            nucs_and_rels(label_idx, self.relation_vocab)
+                    else:
+                        nuclearity_left, nuclearity_right, relation_left, relation_right = \
+                        nucs_and_rels(label_idx, self.relation_tables[cls_idx])
                     span = '(1:' + str(nuclearity_left) + '=' + str(relation_left) + \
                            ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
                     span_batch.append([span])
@@ -550,8 +589,14 @@ class ParsingNet(nn.Module):
                                 input_left = input_left.unsqueeze(0)
                                 input_right = input_right.unsqueeze(0)
 
-                        relation_weights, log_relation_weights = self.label_classifiers[cur_dataset_index](input_left,
-                                                                                                           input_right)
+                        cls_idx = self.dataset2classifier[cur_dataset_index]
+                        if self.dataset_masks is not None:
+                            mask = self.dataset_masks[cls_idx]
+                            relation_weights, log_relation_weights = self.label_classifier(
+                                input_left, input_right, mask=mask)
+                        else:
+                            relation_weights, log_relation_weights = self.label_classifiers[cls_idx](
+                                input_left, input_right)
                         _, topindex = relation_weights.topk(1)
                         label_idx = int(topindex[0][0])
                         cur_label.append(label_idx)
@@ -580,8 +625,13 @@ class ParsingNet(nn.Module):
 
                         if generate_tree:
                             # To generate a tree structure
-                            (nuclearity_left, nuclearity_right, relation_left, relation_right) = nucs_and_rels(
-                                label_idx, self.relation_tables[cur_dataset_index])
+
+                            if self.dataset_masks is not None:
+                                nuclearity_left, nuclearity_right, relation_left, relation_right = \
+                                        nucs_and_rels(label_idx, self.relation_vocab)
+                            else:
+                                (nuclearity_left, nuclearity_right, relation_left, relation_right) = nucs_and_rels(
+                                    label_idx, self.relation_tables[cls_idx])
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
                                 relation_left) + \
@@ -619,8 +669,14 @@ class ParsingNet(nn.Module):
                             input_left_du, input_right_du = self._encode_du(cur_encoder_outputs, stack_head[0],
                                                                             tree_predict, stack_head[-1])
 
-                        relation_weights, log_relation_weights = self.label_classifiers[
-                            cur_dataset_index](input_left_du, input_right_du)
+                        cls_idx = self.dataset2classifier[cur_dataset_index]
+                        if self.dataset_masks is not None:
+                            mask = self.dataset_masks[cls_idx]
+                            relation_weights, log_relation_weights = self.label_classifier(
+                                input_left_du, input_right_du, mask=mask)
+                        else:
+                            relation_weights, log_relation_weights = self.label_classifiers[cls_idx](
+                                input_left_du, input_right_du)
 
                         _, topindex_label = relation_weights.topk(1)
                         label_idx = int(topindex_label[0][0])
@@ -663,8 +719,13 @@ class ParsingNet(nn.Module):
 
                         if generate_tree:
                             # Generate a span structure: e.g. (1:Nucleus=span:8,9:Satellite=Attribution:12)
-                            nuclearity_left, nuclearity_right, relation_left, relation_right = \
-                                nucs_and_rels(label_idx, self.relation_tables[cur_dataset_index])
+                            cls_idx = self.dataset2classifier[cur_dataset_index]
+                            if self.dataset_masks is not None:
+                                nuclearity_left, nuclearity_right, relation_left, relation_right = \
+                                    nucs_and_rels(label_idx, self.relation_vocab)
+                            else:
+                                nuclearity_left, nuclearity_right, relation_left, relation_right = \
+                                    nucs_and_rels(label_idx, self.relation_tables[cls_idx])
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
                                 relation_left) + \
@@ -778,7 +839,7 @@ class ParsingNet(nn.Module):
          batch_edu_breaks, batch_decoder_inputs, batch_relation_labels,
          batch_parsing_breaks, batch_golden_metrics, dataset_index) = batch
 
-        loss_tree_batch, loss_label_batch, span_batch, label_tuple_batch, predict_edu_breaks = self.testing_loss(
+        loss_tree_batch, loss_label_batch, span_batch, _, predict_edu_breaks = self.testing_loss(
             batch_input_sentences, batch_sent_breaks, batch_entity_ids, batch_entity_position_ids,
             batch_edu_breaks, batch_relation_labels, batch_parsing_breaks,
             generate_tree=True, use_pred_segmentation=use_pred_segmentation, dataset_index=dataset_index)
@@ -977,73 +1038,73 @@ def merge_trees(G):
     return G
 
 
-# def matrix_to_image(matrix, filename, min_val=-2, max_val=0):
-#     """Convert a 2D matrix to a grayscale image
-#
-#     Args:
-#         matrix: 2D numpy array
-#         filename: Output image file
-#         min_val: Minimum value to map to 0. Defaults to matrix min.
-#         max_val: Maximum value to map to 255. Defaults to matrix max.
-#
-#     Returns:
-#         PIL Image object
-#     """
-#
-#     if len(matrix.shape) != 2:
-#         raise ValueError('Input matrix must be 2D')
-#
-#     if min_val is None:
-#         min_val = matrix.min()
-#     if max_val is None:
-#         max_val = matrix.max()
-#
-#     matrix = (matrix - min_val) / (max_val - min_val)
-#     matrix = (255 * matrix).astype(np.uint8)
-#
-#     with open(filename, 'wb') as f:
-#         img = Image.fromarray(matrix)
-#         img.save(f)
-#         return img
+def matrix_to_image(matrix, filename, min_val=-2, max_val=0):
+    """Convert a 2D matrix to a grayscale image
+
+    Args:
+        matrix: 2D numpy array
+        filename: Output image file
+        min_val: Minimum value to map to 0. Defaults to matrix min.
+        max_val: Maximum value to map to 255. Defaults to matrix max.
+
+    Returns:
+        PIL Image object
+    """
+
+    if len(matrix.shape) != 2:
+        raise ValueError('Input matrix must be 2D')
+
+    if min_val is None:
+        min_val = matrix.min()
+    if max_val is None:
+        max_val = matrix.max()
+
+    matrix = (matrix - min_val) / (max_val - min_val)
+    matrix = (255 * matrix).astype(np.uint8)
+
+    with open(filename, 'wb') as f:
+        img = Image.fromarray(matrix)
+        img.save(f)
+        return img
 
 
-# def matrix_to_image_2chan(matrix1, matrix2, filename, min_val=-2, max_val=0):
-#     """Convert two 2D matrices to a 2-channel image
-#
-#     Args:
-#         matrix1: First 2D numpy array (channel 1)
-#         matrix2: Second 2D numpy array (channel 2)
-#         filename: Output image file
-#         min_val: Minimum value to map to 0. Defaults to matrix min.
-#         max_val: Maximum value to map to 255. Defaults to matrix max.
-#
-#     Returns:
-#         PIL Image object
-#     """
-#
-#     shape1 = matrix1.shape
-#     shape2 = matrix2.shape
-#
-#     if len(shape1) != 2 or len(shape2) != 2:
-#         raise ValueError('Input matrices must be 2D')
-#
-#     if shape1 != shape2:
-#         raise ValueError('Input matrices must have matching dimensions')
-#
-#     if min_val is None:
-#         min_val = min(matrix1.min(), matrix2.min())
-#     if max_val is None:
-#         max_val = max(matrix1.max(), matrix2.max())
-#
-#     matrix1 = (matrix1 - min_val) / (max_val - min_val)
-#     matrix2 = (matrix2 - min_val) / (max_val - min_val)
-#     matrix1 = (255 * matrix1).astype(np.uint8)
-#     matrix2 = (255 * matrix2).astype(np.uint8)
-#
-#     image = np.dstack((matrix1, matrix2, np.zeros(shape1)))
-#     img_u8 = (255 * image).astype(np.uint8)
-#
-#     with open(filename, 'wb') as f:
-#         img = Image.fromarray(img_u8, mode='RGB')
-#         img.save(f)
-#         return img
+def matrix_to_image_2chan(matrix1, matrix2, filename, min_val=-2, max_val=0):
+    """Convert two 2D matrices to a 2-channel image
+
+    Args:
+        matrix1: First 2D numpy array (channel 1)
+        matrix2: Second 2D numpy array (channel 2)
+        filename: Output image file
+        min_val: Minimum value to map to 0. Defaults to matrix min.
+        max_val: Maximum value to map to 255. Defaults to matrix max.
+
+    Returns:
+        PIL Image object
+    """
+
+    shape1 = matrix1.shape
+    shape2 = matrix2.shape
+
+    if len(shape1) != 2 or len(shape2) != 2:
+        raise ValueError('Input matrices must be 2D')
+
+    if shape1 != shape2:
+        raise ValueError('Input matrices must have matching dimensions')
+
+    if min_val is None:
+        min_val = min(matrix1.min(), matrix2.min())
+    if max_val is None:
+        max_val = max(matrix1.max(), matrix2.max())
+
+    matrix1 = (matrix1 - min_val) / (max_val - min_val)
+    matrix2 = (matrix2 - min_val) / (max_val - min_val)
+    matrix1 = (255 * matrix1).astype(np.uint8)
+    matrix2 = (255 * matrix2).astype(np.uint8)
+
+    image = np.dstack((matrix1, matrix2, np.zeros(shape1)))
+    img_u8 = (255 * image).astype(np.uint8)
+
+    with open(filename, 'wb') as f:
+        img = Image.fromarray(img_u8, mode='RGB')
+        img.save(f)
+        return img
