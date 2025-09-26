@@ -2,22 +2,40 @@
 
 # IsaNLP RST Parser
 
-This library provides several versions of the Rhetorical Structure (RST) parser for English and Russian. Below, you will find instructions on how to set up and run the parser either locally or using Docker.
+This library provides several versions of the Rhetorical Structure (RST) parser for multiple languages. Below, you will find instructions on how to set up and run the parser either locally or using Docker.
 
 ## Performance
 
-The parser supports multiple languages and corpora. The end-to-end performance metrics for different model versions across various corpora are as follows:
+The parser supports multiple languages and corpora. The end-to-end performance metrics for different model versions across corpora are as follows:
 
-### Corpora
-- **English:** GUM<sub>9.1</sub>, RST-DT
-- **Russian:** RRT<sub>2.1</sub>, RRG<sub>GUM-9.1</sub>
+### Tags
 
-| Tag / Version | Language   | Train Data  | Test Data   | Seg  | S    | N    | R    | Full  |
-|-------------|------------|-------------|-------------|------|------|------|------|-------|
-| `gumrrg` | En, Ru     | GUM, RRG    | GUM         | 95.5 | 67.4 | 56.2 | 49.6 | 48.7  |
-|             |            |             | RRG         | 97.0 | 67.1 | 54.6 | 46.5 | 45.4  |
-| `rstdt`     | En         | RST-DT      | RST-DT      | 97.8 | 75.6 | 65.0 | 55.6 | 53.9  |
-| `rstreebank` | Ru         | RRT         | RRT         | 92.1 | 66.2 | 53.1 | 46.1 | 46.2  |
+Supported languages (all): English (eng), Czech (ces), German (deu), Basque (eus), Persian (fas), French (fra), Dutch (nld), Brazilian Portuguese (por), Russian (rus), Spanish (spa), and Chinese (zho).
+
+| Tag / Version | Languages   | Train Data          | Test Data       | Seg  | S    | N    | R    | Full  |
+|-------------- |------------ |---------------------|-----------------|------|------|------|------|-------|
+| `rstdt`       | eng         | eng.rstdt           | eng.rst.rstdt       | 97.8 | 75.6 | 65.0 | 55.6 | 53.9  |
+| `gumrrg`      | eng, rus    | eng.gum, rus.rrg    | eng.rst.gum         | 95.5 | 67.4 | 56.2 | 49.6 | 48.7  |
+|               |             |                     | rus.rst.rrg         | 97.0 | 67.1 | 54.6 | 46.5 | 45.4  |
+| `rstreebank`  | rus         | rus.rrt             | rus.rst.rrt         | 92.1 | 66.2 | 53.1 | 46.1 | 46.2  |
+| `unirst`      | all         | all                 | ces.rst.crdt     | 94.5 | 59.1 | 41.2 | 28.6 | 28.0 |
+|               |             |                     | deu.rst.pcc      | 96.5 | 67.3 | 47.4 | 34.1 | 32.1 |
+|               |             |                     | eng.rst.gum      | 95.3 | 67.3 | 55.6 | 48.5 | 47.4 |
+|               |             |                     | eng.rst.oll      | 92.5 | 55.7 | 39.0 | 27.5 | 26.3 |
+|               |             |                     | eng.rst.rstdt    | 98.1 | 76.7 | 65.5 | 55.2 | 53.6 |
+|               |             |                     | eng.rst.sts      | 91.2 | 43.3 | 31.3 | 19.4 | 18.7 |
+|               |             |                     | eng.rst.umuc     | 88.8 | 52.6 | 40.6 | 26.2 | 25.8 |
+|               |             |                     | eus.rst.ert      | 92.5 | 66.0 | 50.3 | 34.9 | 34.7 |
+|               |             |                     | fas.rst.prstc    | 94.7 | 63.0 | 50.2 | 40.8 | 40.7 |
+|               |             |                     | fra.sdrt.annodis | 91.3 | 58.6 | 48.9 | 30.6 | 30.3 |
+|               |             |                     | nld.rst.nldt     | 98.0 | 61.8 | 49.8 | 36.8 | 35.8 |
+|               |             |                     | por.rst.cstn     | 93.9 | 68.4 | 52.8 | 44.9 | 44.5 |
+|               |             |                     | rus.rst.rrg      | 96.4 | 67.4 | 54.0 | 46.3 | 45.1 |
+|               |             |                     | rus.rst.rrt      | 90.7 | 63.0 | 49.0 | 42.3 | 42.2 |
+|               |             |                     | spa.rst.rststb   | 93.4 | 63.5 | 50.3 | 36.0 | 36.0 |
+|               |             |                     | spa.rst.sctb     | 85.5 | 55.1 | 46.8 | 39.1 | 39.1 |
+|               |             |                     | zho.rst.gcdt     | 93.0 | 64.5 | 50.7 | 45.9 | 44.6 |
+|               |             |                     | zho.rst.sctb     | 95.4 | 67.5 | 51.5 | 39.9 | 39.9 |
 
 
 ## Local Setup
@@ -63,6 +81,12 @@ To use the IsaNLP RST Parser locally, follow these steps:
    # Display the structure of the RST tree
    vars(res['rst'][0])
    ```
+
+   To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.rst.dataset'`, as listed in the performance table. The default inventory for UniRST is `eng.rst.rstdt`. 
+   
+   ```python
+   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3', hf_model_version='unirst', cuda_device=0, relinventory='eng.rst.gum')
+   ```
    
    The output is an RST tree with the following structure:
 
@@ -86,7 +110,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
    - **start** and **end**: Character offsets in the text for this discourse unit.
    - **text**: Text span corresponding to this discourse unit.
 
-3. **(Optional) Save the result in RS3 format:**
+4. **(Optional) Save the result in RS3 format:**
 
    You can save the resulting RST tree in an RS3 file using the following command:
 
