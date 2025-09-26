@@ -85,7 +85,10 @@ To use the IsaNLP RST Parser locally, follow these steps:
    To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.code.dataset'`, as listed in the performance table. The default inventory for UniRST is `eng.rst.rstdt`. 
    
    ```python
-   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3', hf_model_version='unirst', cuda_device=0, relinventory='eng.erst.gum')
+   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3',
+                   hf_model_version='unirst',
+                   cuda_device=0,
+                   relinventory='eng.erst.gum')
    ```
    
    The output is an RST tree with the following structure:
