@@ -14,13 +14,13 @@ Supported languages (all): English (eng), Czech (ces), German (deu), Basque (eus
 
 | Tag / Version | Languages   | Train Data          | Test Data       | Seg  | S    | N    | R    | Full  |
 |-------------- |------------ |---------------------|-----------------|------|------|------|------|-------|
-| `rstdt`       | eng         | eng.rstdt           | eng.rst.rstdt       | 97.8 | 75.6 | 65.0 | 55.6 | 53.9  |
-| `gumrrg`      | eng, rus    | eng.gum, rus.rrg    | eng.rst.gum         | 95.5 | 67.4 | 56.2 | 49.6 | 48.7  |
+| `rstdt`       | eng         | eng.rst.rstdt       | eng.rst.rstdt       | 97.8 | 75.6 | 65.0 | 55.6 | 53.9  |
+| `gumrrg`      | eng, rus    | eng.erst.gum, rus.rst.rrg    | eng.erst.gum        | 95.5 | 67.4 | 56.2 | 49.6 | 48.7  |
 |               |             |                     | rus.rst.rrg         | 97.0 | 67.1 | 54.6 | 46.5 | 45.4  |
 | `rstreebank`  | rus         | rus.rrt             | rus.rst.rrt         | 92.1 | 66.2 | 53.1 | 46.1 | 46.2  |
 | `unirst`      | all         | all                 | ces.rst.crdt     | 94.5 | 59.1 | 41.2 | 28.6 | 28.0 |
 |               |             |                     | deu.rst.pcc      | 96.5 | 67.3 | 47.4 | 34.1 | 32.1 |
-|               |             |                     | eng.rst.gum      | 95.3 | 67.3 | 55.6 | 48.5 | 47.4 |
+|               |             |                     | eng.erst.gum     | 95.3 | 67.3 | 55.6 | 48.5 | 47.4 |
 |               |             |                     | eng.rst.oll      | 92.5 | 55.7 | 39.0 | 27.5 | 26.3 |
 |               |             |                     | eng.rst.rstdt    | 98.1 | 76.7 | 65.5 | 55.2 | 53.6 |
 |               |             |                     | eng.rst.sts      | 91.2 | 43.3 | 31.3 | 19.4 | 18.7 |
@@ -82,10 +82,10 @@ To use the IsaNLP RST Parser locally, follow these steps:
    vars(res['rst'][0])
    ```
 
-   To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.rst.dataset'`, as listed in the performance table. The default inventory for UniRST is `eng.rst.rstdt`. 
+   To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.code.dataset'`, as listed in the performance table. The default inventory for UniRST is `eng.rst.rstdt`. 
    
    ```python
-   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3', hf_model_version='unirst', cuda_device=0, relinventory='eng.rst.gum')
+   parser = Parser(hf_model_name='tchewik/isanlp_rst_v3', hf_model_version='unirst', cuda_device=0, relinventory='eng.erst.gum')
    ```
    
    The output is an RST tree with the following structure:
@@ -124,6 +124,8 @@ To use the IsaNLP RST Parser locally, follow these steps:
 
 ## Docker Setup
 
+For now, Docker container is available for tags: `rstdt`, `gumrrg`, `rstreebank`. 
+
 To run the IsaNLP RST Parser using Docker, follow these steps:
 
 1. **Run the Docker container:**
@@ -160,6 +162,8 @@ To run the IsaNLP RST Parser using Docker, follow these steps:
    res = ppl(text)
    # res['rst'] will contain the binary discourse tree, similar to the previous example
    ```
+
+
 
    
 ## Citation
