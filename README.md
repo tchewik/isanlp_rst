@@ -1,4 +1,6 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue) 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1dFItacO_fiOczrVno-hXEn2HTTN6ldH5?usp=sharing)
+
 
 # IsaNLP RST Parser
 
