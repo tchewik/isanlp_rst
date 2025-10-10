@@ -38,7 +38,7 @@ PathLike = Union[str, os.PathLike]
 
 
 def render(rs3_source: Union[PathLike, bytes, IO[str], IO[bytes]], *,
-           display_inline: bool = True, colab: bool = False) -> RenderedRST:
+           display_inline: bool = True, colab: bool = True) -> RenderedRST:
     """Render an RST tree and, optionally, display it inline.
 
     This is a light-weight proxy around :func:`isanlp_rst.rstviewer.main.render`.
@@ -66,7 +66,8 @@ def to_html(rs3_path: PathLike, html_path: Optional[PathLike] = None, *,
     html_str = _rst_main.rs3tohtml(os.fspath(rs3_path), user=user, project=project)
     if html_path is not None:
         Path(html_path).write_text(html_str, encoding="utf-8")
-    return html_str
+    else:
+        return html_str
 
 
 def to_png(rs3_path: PathLike, png_path: Optional[PathLike] = None, *,

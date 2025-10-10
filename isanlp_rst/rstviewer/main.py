@@ -1,25 +1,23 @@
 import argparse
 import asyncio
 import base64
+import json
 import os
 import re
 import sys
 import tempfile
 import uuid
 import warnings
-from typing import Optional, Union
-from pathlib import Path
-from PIL import Image, ImageChops
 from io import BytesIO
+from pathlib import Path
+from typing import Optional, Union
 
-# import isanlp_rst.rstviewer
-from . import rstweb_classes, rstweb_reader, rstweb_sql
+from PIL import Image, ImageChops
+
+from .rstweb_classes import NODE, get_depth, get_left_right
 from .rstweb_sql import (
     import_document, get_def_rel, get_max_right, get_multinuc_children_lr,
-    get_multinuc_children_lr_ids, get_rel_type,
-    get_rst_doc, get_rst_rels, setup_db)
-from .rstweb_classes import NODE, get_depth, get_left_right
-
+    get_multinuc_children_lr_ids, get_rst_doc, get_rst_rels, setup_db)
 
 JS_GET_DOCUMENT_HEIGHT = """
 let docHeight = Math.max(
@@ -46,9 +44,39 @@ return Math.round(docWidth * 1.03);
 PACKAGE_ROOT_DIR = Path(__file__).resolve().parent
 DATA_ROOT_DIR = PACKAGE_ROOT_DIR / "data"
 
-print(f'{PACKAGE_ROOT_DIR = }')
-print(f'{DATA_ROOT_DIR = }')
 
+def _html_to_fragment(full_html: str) -> str:
+    """Return only <body> contents without any <style>/<script>."""
+    m = re.search(r"(?is)<body[^>]*>(.*?)</body>", full_html)
+    if m:
+        body_inner = m.group(1)
+    else:
+        # fallback: strip <head> and <html> wrappers
+        tmp = re.sub(r"(?is)<head[^>]*>.*?</head>", "", full_html)
+        tmp = re.sub(r"(?is)</?html[^>]*>", "", tmp)
+        body_inner = tmp
+    # remove any style/script that might still be in body
+    core = re.sub(r"(?is)<(style|script)\b[^>]*>.*?</\1>", "", body_inner)
+    return core
+
+
+def _split_document_assets(full_html: str) -> str:
+    """All <style>/<script> from the whole page (head+body)."""
+    return "".join(re.findall(r"(?is)<style[^>]*>.*?</style>|<script[^>]*>.*?</script>", full_html))
+
+
+def _collect_assets_b64(full_html: str):
+    """
+    Return assets (styles & scripts) **in original order**,
+    base64-encoding their UTF-8 bytes.
+    """
+    assets = []
+    for m in re.finditer(r"(?is)<(style|script)[^>]*>(.*?)</\1>", full_html):
+        tag = m.group(1).lower()
+        content = m.group(2)
+        b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")  # base64 alphabet is ASCII-safe
+        assets.append({"k": tag, "d": b64})
+    return assets
 
 
 def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
@@ -66,25 +94,25 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
     with open(os.path.join(templatedir, 'main.html'), 'r', encoding='utf-8') as template:
         header = template.read()
 
-    header = header.replace("**page_title**","RST Viewer")
-    header = header.replace("**doc**",current_doc)
+    header = header.replace("**page_title**", "RST Viewer")
+    header = header.replace("**doc**", current_doc)
 
     def _load_asset_text(*path_parts):
         asset_path = os.path.join(DATA_ROOT_DIR, *path_parts)
         with open(asset_path, 'r', encoding='utf-8') as asset_file:
             return asset_file.read()
-    
+
     header = header.replace(
-    '<link rel="stylesheet" href="**css_dir**/rst.css" type="text/css" charset="utf-8"/>',
-    '<style>\n' + _load_asset_text('css', 'rst.css') + '\n</style>\n'
-    '<style>\n'
-    '.rst_rel_wrap{display:inline-flex;align-items:center;justify-content:center}'
-    '.rst_rel_label{font-size:8pt;font-weight:bold;'
-    ' color:red;background-color:rgba(255,255,255,0.85);'
-    ' padding:0 2px;border-radius:3px;user-select:none;'
-    ' white-space: nowrap; '
-    '}'
-    '</style>'
+        '<link rel="stylesheet" href="**css_dir**/rst.css" type="text/css" charset="utf-8"/>',
+        '<style>\n' + _load_asset_text('css', 'rst.css') + '\n</style>\n'
+                                                           '<style>\n'
+                                                           '.rst_rel_wrap{display:inline-flex;align-items:center;justify-content:center}'
+                                                           '.rst_rel_label{font-size:8pt;font-weight:bold;'
+                                                           ' color:red;background-color:rgba(255,255,255,0.85);'
+                                                           ' padding:0 2px;border-radius:3px;user-select:none;'
+                                                           ' white-space: nowrap; '
+                                                           '}'
+                                                           '</style>'
     )
 
     def _inline_script_tag(script_filename):
@@ -106,39 +134,39 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
     cpout += '''<div>\n'''
 
     rels = get_rst_rels(current_doc, current_project)
-    def_multirel = get_def_rel("multinuc",current_doc, current_project)
-    def_rstrel = get_def_rel("rst",current_doc, current_project)
-    multi_options =""
-    rst_options =""
+    def_multirel = get_def_rel("multinuc", current_doc, current_project)
+    def_rstrel = get_def_rel("rst", current_doc, current_project)
+    multi_options = ""
+    rst_options = ""
     rel_kinds = {}
     for rel in rels:
-        if rel[1]=="multinuc":
-            multi_options += "<option value='"+rel[0]+"'>"+rel[0].replace("_m","")+'</option>'
+        if rel[1] == "multinuc":
+            multi_options += "<option value='" + rel[0] + "'>" + rel[0].replace("_m", "") + '</option>'
             rel_kinds[rel[0]] = "multinuc"
         else:
-            rst_options += "<option value='"+rel[0]+"'>"+rel[0].replace("_r","")+'</option>'
+            rst_options += "<option value='" + rel[0] + "'>" + rel[0].replace("_r", "") + '</option>'
             rel_kinds[rel[0]] = "rst"
-    multi_options += "<option value='"+def_rstrel+"'>(satellite...)</option>"
+    multi_options += "<option value='" + def_rstrel + "'>(satellite...)</option>"
 
-    nodes={}
-    rows = get_rst_doc(current_doc,current_project,user)
+    nodes = {}
+    rows = get_rst_doc(current_doc, current_project, user)
     for row in rows:
         if row[7] in rel_kinds:
             relkind = rel_kinds[row[7]]
         else:
             relkind = "span"
         if row[5] == "edu":
-            nodes[row[0]] = NODE(row[0],row[1],row[2],row[3],row[4],row[5],row[6],row[7],relkind)
+            nodes[row[0]] = NODE(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], relkind)
         else:
-            nodes[row[0]] = NODE(row[0],0,0,row[3],row[4],row[5],row[6],row[7],relkind)
+            nodes[row[0]] = NODE(row[0], 0, 0, row[3], row[4], row[5], row[6], row[7], relkind)
 
     for key in nodes:
         node = nodes[key]
-        get_depth(node,node,nodes)
+        get_depth(node, node, nodes)
 
     for key in nodes:
         if nodes[key].kind == "edu":
-            get_left_right(key, nodes,0,0,rel_kinds)
+            get_left_right(key, nodes, 0, 0, rel_kinds)
 
     # ---- Adaptive horizontal unit to keep coordinates stable on very wide graphs
     # We need max_right before any anchor/pixel calculations.
@@ -151,34 +179,39 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
     pix_anchors = {}
 
     # Calculate anchor points for nodes (proportional within the parent)
-    for key in sorted(nodes, key = lambda id: nodes[id].depth, reverse=True):
+    for key in sorted(nodes, key=lambda id: nodes[id].depth, reverse=True):
         node = nodes[key]
-        if node.kind=="edu":
-            anchors[node.id]= "0.5"
-        if node.parent!="0":
+        if node.kind == "edu":
+            anchors[node.id] = "0.5"
+        if node.parent != "0":
             parent = nodes[node.parent]
-            parent_wid = (parent.right- parent.left+1) * px_unit - 4
-            child_wid = (node.right- node.left+1) * px_unit - 4
+            parent_wid = (parent.right - parent.left + 1) * px_unit - 4
+            child_wid = (node.right - node.left + 1) * px_unit - 4
             if node.relname == "span":
                 if node.id in anchors:
-                    anchors[parent.id] = str(((node.left - parent.left)*px_unit)/parent_wid+float(anchors[node.id])*float(child_wid/parent_wid))
+                    anchors[parent.id] = str(
+                        ((node.left - parent.left) * px_unit) / parent_wid + float(anchors[node.id]) * float(
+                            child_wid / parent_wid))
                 else:
-                    anchors[parent.id] = str(((node.left - parent.left)*px_unit)/parent_wid+(0.5*child_wid)/parent_wid)
-            elif node.relkind=="multinuc" and parent.kind =="multinuc":
-                lr = get_multinuc_children_lr(node.parent,current_doc,current_project,user)
-                lr_wid = (lr[0] + lr[1]) /2
-                lr_ids = get_multinuc_children_lr_ids(node.parent,lr[0],lr[1],current_doc,current_project,user)
+                    anchors[parent.id] = str(
+                        ((node.left - parent.left) * px_unit) / parent_wid + (0.5 * child_wid) / parent_wid)
+            elif node.relkind == "multinuc" and parent.kind == "multinuc":
+                lr = get_multinuc_children_lr(node.parent, current_doc, current_project, user)
+                lr_wid = (lr[0] + lr[1]) / 2
+                lr_ids = get_multinuc_children_lr_ids(node.parent, lr[0], lr[1], current_doc, current_project, user)
                 left_child = lr_ids[0]
                 right_child = lr_ids[1]
                 if left_child == right_child:
                     anchors[parent.id] = "0.5"
                 else:
                     if left_child in anchors and right_child in anchors:
-                        len_left = nodes[left_child].right-nodes[left_child].left+1
-                        len_right = nodes[right_child].right-nodes[right_child].left+1
-                        anchors[parent.id] = str(((float(anchors[left_child]) * len_left*px_unit + float(anchors[right_child]) * len_right * px_unit + (nodes[right_child].left - parent.left) * px_unit)/2)/parent_wid)
+                        len_left = nodes[left_child].right - nodes[left_child].left + 1
+                        len_right = nodes[right_child].right - nodes[right_child].left + 1
+                        anchors[parent.id] = str(((float(anchors[left_child]) * len_left * px_unit + float(
+                            anchors[right_child]) * len_right * px_unit + (nodes[
+                                                                               right_child].left - parent.left) * px_unit) / 2) / parent_wid)
                     else:
-                        anchors[parent.id] = str((lr_wid - parent.left+1) / (parent.right - parent.left+1))
+                        anchors[parent.id] = str((lr_wid - parent.left + 1) / (parent.right - parent.left + 1))
             else:
                 if not parent.id in anchors:
                     anchors[parent.id] = "0.5"
@@ -194,60 +227,64 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
     for key in nodes:
         node = nodes[key]
         if node.kind != "edu":
-            g_wid = str(int((node.right- node.left+1) * px_unit - 4))
+            g_wid = str(int((node.right - node.left + 1) * px_unit - 4))
             cpout += (
-                '<div id="lg' + node.id + '" class="group" style="left: '
-                + str(int(node.left * px_unit - px_unit))
-                + 'px; width: '
-                + g_wid
-                + 'px; top:'
-                + str(int(top_spacing + layer_spacing + node.depth * layer_spacing))
-                + 'px; z-index:1">\n'
+                    '<div id="lg' + node.id + '" class="group" style="left: '
+                    + str(int(node.left * px_unit - px_unit))
+                    + 'px; width: '
+                    + g_wid
+                    + 'px; top:'
+                    + str(int(top_spacing + layer_spacing + node.depth * layer_spacing))
+                    + 'px; z-index:1">\n'
             )
             cpout += (
-                '\t<div id="wsk'
-                + node.id
-                + '" class="whisker" style="width:'
-                + g_wid
-                + 'px;"></div>\n</div>\n'
+                    '\t<div id="wsk'
+                    + node.id
+                    + '" class="whisker" style="width:'
+                    + g_wid
+                    + 'px;"></div>\n</div>\n'
             )
             cpout += (
-                '<div id="g'+ node.id +'" class="num_cont" style="position: absolute; left:'
-                + pix_anchors[node.id] +'px; top:'+ str(int(4+ top_spacing + layer_spacing+node.depth*layer_spacing))
-                +'px; z-index:'+str(int(200-(node.right-node.left)))+'">\n'
+                    '<div id="g' + node.id + '" class="num_cont" style="position: absolute; left:'
+                    + pix_anchors[node.id] + 'px; top:' + str(
+                int(4 + top_spacing + layer_spacing + node.depth * layer_spacing))
+                    + 'px; z-index:' + str(int(200 - (node.right - node.left))) + '">\n'
             )
             cpout += '\t<table class="btn_tb">\n\t\t<tr>'
-            cpout += '\n\t\t\t<td rowspan="2"><span class="num_id">'+str(int(node.left))+"-"+str(int(node.right))+'</span></td>\n'
+            cpout += '\n\t\t\t<td rowspan="2"><span class="num_id">' + str(int(node.left)) + "-" + str(
+                int(node.right)) + '</span></td>\n'
             cpout += '\t</table>\n</div>\n<br/>\n\n'
 
-        elif node.kind=="edu":
+        elif node.kind == "edu":
             cpout += (
-                '<div id="edu'
-                + str(node.id)
-                + '" class="edu" title="'
-                + str(node.id)
-                + '" style="left:'
-                + str(int(int(node.id) * px_unit - px_unit))
-                + 'px; top:'
-                + str(int(top_spacing + layer_spacing + node.depth * layer_spacing))
-                + 'px; width: '
-                + str(int(edu_inner_w))
-                + 'px">\n'
+                    '<div id="edu'
+                    + str(node.id)
+                    + '" class="edu" title="'
+                    + str(node.id)
+                    + '" style="left:'
+                    + str(int(int(node.id) * px_unit - px_unit))
+                    + 'px; top:'
+                    + str(int(top_spacing + layer_spacing + node.depth * layer_spacing))
+                    + 'px; width: '
+                    + str(int(edu_inner_w))
+                    + 'px">\n'
             )
-            cpout += '\t<div id="wsk'+node.id+'" class="whisker" style="width:'+str(int(edu_inner_w))+'px;"></div>'
+            cpout += '\t<div id="wsk' + node.id + '" class="whisker" style="width:' + str(
+                int(edu_inner_w)) + 'px;"></div>'
             cpout += '\n\t<div class="edu_num_cont">'
             cpout += '\n\t\t<table class="btn_tb">\n\t\t\t<tr>'
-            cpout += '\n\t\t\t\t<td rowspan="2"><span class="num_id">&nbsp;'+str(int(node.left))+'&nbsp;</span></td>\n'
-            cpout += '</table>\n</div>'+node.text+'</div>\n'
+            cpout += '\n\t\t\t\t<td rowspan="2"><span class="num_id">&nbsp;' + str(
+                int(node.left)) + '&nbsp;</span></td>\n'
+            cpout += '</table>\n</div>' + node.text + '</div>\n'
 
     jsplumb_src = _load_asset_text('script', 'jquery.jsPlumb-1.7.5-min.js')
     cpout += '<script>\n' + jsplumb_src + '\n</script>\n<script>\n'
 
     cpout += 'function select_my_rel(options,my_rel){'
-    cpout += 'var multi_options = "' + multi_options +'";'
-    cpout += 'var rst_options = "' + rst_options +'";'
+    cpout += 'var multi_options = "' + multi_options + '";'
+    cpout += 'var rst_options = "' + rst_options + '";'
     cpout += 'if (options =="multi"){options = multi_options;} else {options=rst_options;}'
-    cpout += '      return options.replace("<option value='+"'" +'"' + '+my_rel+'+'"' +"'"+'","<option selected='+"'"+'selected'+"'"+' value='+"'" +'"'+ '+my_rel+'+'"' +"'"+'");'
+    cpout += '      return options.replace("<option value=' + "'" + '"' + '+my_rel+' + '"' + "'" + '","<option selected=' + "'" + 'selected' + "'" + ' value=' + "'" + '"' + '+my_rel+' + '"' + "'" + '");'
     cpout += '          }\n'
 
     cpout += '''function rel_display(rel){
@@ -328,13 +365,13 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
             node_id_str = "edu" + node.id
         else:
             node_id_str = "g" + node.id
-        cpout += 'jsPlumb.makeSource("'+node_id_str+'", {anchor: "Top", filter: ".num_id", allowLoopback:false});'
-        cpout += 'jsPlumb.makeTarget("'+node_id_str+'", {anchor: "Top", filter: ".num_id", allowLoopback:false});'
+        cpout += 'jsPlumb.makeSource("' + node_id_str + '", {anchor: "Top", filter: ".num_id", allowLoopback:false});'
+        cpout += 'jsPlumb.makeTarget("' + node_id_str + '", {anchor: "Top", filter: ".num_id", allowLoopback:false});'
 
     # Connect nodes
     for key in nodes:
         node = nodes[key]
-        if node.parent!="0":
+        if node.parent != "0":
             parent = nodes[node.parent]
             if node.kind == "edu":
                 node_id_str = "edu" + node.id
@@ -346,11 +383,11 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
                 parent_id_str = "g" + parent.id
 
             if node.relname == "span":
-                cpout += 'jsPlumb.connect({source:"'+node_id_str+'",target:"'+parent_id_str+ '", connector:"Straight", anchors: ["Top","Bottom"]});'
-            elif parent.kind == "multinuc" and node.relkind=="multinuc":
-                cpout += 'jsPlumb.connect({source:"'+node_id_str+'",target:"'+parent_id_str+ '", connector:"Straight", anchors: ["Top","Bottom"], overlays: [ ["Custom", {create:function(component) {return make_relchooser("'+node.id+'","multi","'+node.relname+'");},location:0.2,id:"customOverlay"}]]});'
+                cpout += 'jsPlumb.connect({source:"' + node_id_str + '",target:"' + parent_id_str + '", connector:"Straight", anchors: ["Top","Bottom"]});'
+            elif parent.kind == "multinuc" and node.relkind == "multinuc":
+                cpout += 'jsPlumb.connect({source:"' + node_id_str + '",target:"' + parent_id_str + '", connector:"Straight", anchors: ["Top","Bottom"], overlays: [ ["Custom", {create:function(component) {return make_relchooser("' + node.id + '","multi","' + node.relname + '");},location:0.2,id:"customOverlay"}]]});'
             else:
-                cpout += 'jsPlumb.connect({source:"'+node_id_str+'",target:"'+parent_id_str+'", overlays: [ ["Arrow" , { width:12, length:12, location:0.95 }],["Custom", {create:function(component) {return make_relchooser("'+node.id+'","rst","'+node.relname+'");},location:0.1,id:"customOverlay"}]]});'
+                cpout += 'jsPlumb.connect({source:"' + node_id_str + '",target:"' + parent_id_str + '", overlays: [ ["Arrow" , { width:12, length:12, location:0.95 }],["Custom", {create:function(component) {return make_relchooser("' + node.id + '","rst","' + node.relname + '");},location:0.1,id:"customOverlay"}]]});'
 
     cpout += '''
         jsPlumb.setSuspendDrawing(false,true);
@@ -411,14 +448,13 @@ def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
     return cpout
 
 
-
 def rs3topng(
-    rs3_filepath: Union[str, os.PathLike],
-    png_filepath: Optional[Union[str, os.PathLike]] = None,
-    base64_encoded: bool = False,
-    *,
-    device_scale_factor: int = 2,
-    timeout_ms: int = 10_000,
+        rs3_filepath: Union[str, os.PathLike],
+        png_filepath: Optional[Union[str, os.PathLike]] = None,
+        base64_encoded: bool = False,
+        *,
+        device_scale_factor: int = 2,
+        timeout_ms: int = 10_000,
 ):
     """
     Convert an RS3 file into a PNG image of the RST tree using Playwright/Chromium.
@@ -512,15 +548,15 @@ def rs3topng(
 
 
 async def rs3topng_async(
-    rs3_filepath,
-    png_filepath=None,
-    base64_encoded: bool = False,
-    *,
-    device_scale_factor: int = 2,
-    viewport_width: int = 1600,
-    viewport_height: int = 1000,
-    timeout_ms: int = 10_000,
-    margin_px: int = 12,  # extra padding around the graph
+        rs3_filepath,
+        png_filepath=None,
+        base64_encoded: bool = False,
+        *,
+        device_scale_factor: int = 2,
+        viewport_width: int = 1600,
+        viewport_height: int = 1000,
+        timeout_ms: int = 10_000,
+        margin_px: int = 12,  # extra padding around the graph
 ):
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
@@ -537,7 +573,7 @@ async def rs3topng_async(
         right = min(bbox[2] + pad, im.width)
         bottom = min(bbox[3] + pad, im.height)
         cropped = im.crop((left, top, right, bottom))
-    
+
         out = BytesIO()
         cropped.save(out, format="PNG")
         return out.getvalue()
@@ -632,21 +668,29 @@ async def rs3topng_async(
 
 
 async def rs3topdf_async(
-    rs3_filepath,
-    pdf_path: str,
-    *,
-    device_scale_factor: int = 2,
-    viewport_width: int = 1600,
-    viewport_height: int = 1000,
-    timeout_ms: int = 10_000,
-    margin_px: int = 12,  # extra padding around the graph
+        rs3_filepath,
+        pdf_path: str,
+        *,
+        device_scale_factor: int = 2,
+        viewport_width: int = 1600,
+        viewport_height: int = 1000,
+        timeout_ms: int = 10_000,
+        margin_px: int = 12,  # extra padding around the graph
 ):
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
     html_str = rs3tohtml(os.fspath(rs3_filepath))
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        try:
+            browser = await p.chromium.launch(headless=True)
+        except Exception as e:
+            raise ImportError(
+                "Browser is not installed.\n"
+                "Run:\n"
+                "  playwright install chromium"
+            ) from e
+
         context = await browser.new_context(
             device_scale_factor=device_scale_factor,
             viewport={"width": viewport_width, "height": viewport_height},
@@ -713,7 +757,7 @@ html, body {{
 
         await context.close()
         await browser.close()
-    
+
 
 class RenderedRST(str):
     """String subclass that cooperates with IPython display hooks."""
@@ -735,270 +779,165 @@ def _new_root_id():
 
 
 def _wrap_for_colab(html_str):
+    """
+    Safe Colab wrapper:
+    - inject core HTML (no style/script) directly
+    - inject styles/scripts from base64, decoding as UTF-8 with TextDecoder
+    """
+    core_html = _html_to_fragment(html_str)
+    assets_json = json.dumps(_collect_assets_b64(html_str))
+    core_json = json.dumps(core_html)  # JSON string literal for innerHTML
+
     root_id = _new_root_id()
-    return (
-        f'<div id="{root_id}" style="margin:0;padding:0;background:#fff;color:#000;">' + html_str + "</div>\n"
-        "<script>\n"
-        "(function() {\n"
-        "  const maxFrames = 1000;\n"
-        "  const stableNeeded = 20;\n"
-        "  let last = -1;\n"
-        "  let stable = 0;\n"
-        "  let frames = 0;\n"
-        "\n"
-        "  function hDoc() {\n"
-        "    return Math.max(\n"
-        "      document.body.scrollHeight,\n"
-        "      document.documentElement.scrollHeight,\n"
-        "      document.body.offsetHeight,\n"
-        "      document.documentElement.offsetHeight,\n"
-        "      document.body.clientHeight,\n"
-        "      document.documentElement.clientHeight\n"
-        "    );\n"
-        "  }\n"
-        "\n"
-        "  function tick() {\n"
-        "    try {\n"
-        "      const h = hDoc();\n"
-        "      if (h !== last) {\n"
-        "        last = h;\n"
-        "        stable = 0;\n"
-        "        google.colab.output.setIframeHeight(h, false);\n"
-        "      } else {\n"
-        "        stable++;\n"
-        "        if (stable === stableNeeded) {\n"
-        "          google.colab.output.setIframeHeight(last, false);\n"
-        "          return;\n"
-        "        }\n"
-        "      }\n"
-        "    } catch (e) {\n"
-        "    }\n"
-        "\n"
-        "    frames++;\n"
-        "    if (frames < maxFrames) {\n"
-        "      requestAnimationFrame(tick);\n"
-        "    } else {\n"
-        "      try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {}\n"
-        "    }\n"
-        "  }\n"
-        "\n"
-        "  setTimeout(() => requestAnimationFrame(tick), 0);\n"
-        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 500);\n"
-        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 1500);\n"
-        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 3000);\n"
-        "})();\n"
-        "</script>"
-    )
+
+    template = r'''
+<div id="__ROOT__" style="margin:0;padding:0;"></div>
+<script>
+(function(){
+  var root = document.getElementById('__ROOT__');
+
+  // Core HTML (already without <style>/<script>)
+  root.innerHTML = __CORE_JSON__;
+
+  // Assets (base64), keep original order
+  var assets = __ASSETS_JSON__;
+
+  // Decode base64 -> UTF-8 string (not Latin-1!)
+  var dec = (window.TextDecoder ? new TextDecoder('utf-8') : null);
+  function fromB64UTF8(b64){
+    var bin = atob(b64);
+    if (!dec){
+      // Fallback: best-effort decode if TextDecoder missing (unlikely in Colab/Chrome)
+      try { return decodeURIComponent(escape(bin)); } catch(e) { return bin; }
+    }
+    var bytes = new Uint8Array(bin.length);
+    for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    return dec.decode(bytes);
+  }
+
+  function addStyle(b64){
+    var s = document.createElement('style');
+    s.textContent = fromB64UTF8(b64);
+    document.head.appendChild(s);
+  }
+  function addScript(b64, next){
+    var sc = document.createElement('script');
+    sc.text = fromB64UTF8(b64);
+    document.body.appendChild(sc);  // inline executes synchronously
+    next();
+  }
+
+  (function run(i){
+    if (i >= assets.length) { afterInit(); return; }
+    var a = assets[i];
+    if (a.k === 'style') { addStyle(a.d); run(i+1); }
+    else { addScript(a.d, function(){ run(i+1); }); }
+  })(0);
+
+  // Resize Colab cell as content settles
+  function docHeight(){
+    return Math.max(
+      document.body.scrollHeight, document.documentElement.scrollHeight,
+      document.body.offsetHeight,  document.documentElement.offsetHeight,
+      document.body.clientHeight,  document.documentElement.clientHeight
+    );
+  }
+  function afterInit(){
+    var frames=0,last=-1,stable=0,need=20,max=600;
+    function tick(){
+      try{
+        var h = docHeight();
+        if (h !== last) { last=h; stable=0; try{ google.colab.output.setIframeHeight(h,false); }catch(e){}; }
+        else if (++stable === need) { try{ google.colab.output.setIframeHeight(last,false); }catch(e){}; return; }
+      }catch(e){}
+      if (++frames < max) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+    setTimeout(tick,500); setTimeout(tick,1500); setTimeout(tick,3000);
+  }
+})();
+</script>
+'''
+    return (template
+            .replace('__ROOT__', root_id)
+            .replace('__CORE_JSON__', core_json)
+            .replace('__ASSETS_JSON__', assets_json))
 
 
 def _wrap_for_notebook(html_str):
-    root_id = _new_root_id()
-    
-    return (
-        f'<div id="{root_id}" '
-        'style="margin:0;padding:0;max-width:100%;overflow-x:auto;overflow-y:visible;">'
-        + html_str + "</div>\n"
-        f"<script data-rst-resize=\"{root_id}\">\n"
-        "(function() {\n"
-        f"  var ROOT_ID = {root_id!r};\n"
-        "  var cachedScript = null;\n"
-        "\n"
-        "  function matches(el, selector) {\n"
-        "    if (!el) {\n"
-        "      return false;\n"
-        "    }\n"
-        "    var proto = Element.prototype;\n"
-        "    var func = proto.matches || proto.msMatchesSelector || proto.webkitMatchesSelector;\n"
-        "    if (!func) {\n"
-        "      return false;\n"
-        "    }\n"
-        "    return func.call(el, selector);\n"
-        "  }\n"
-        "\n"
-        "  function closest(el, selector) {\n"
-        "    if (!el) {\n"
-        "      return null;\n"
-        "    }\n"
-        "    if (el.closest) {\n"
-        "      return el.closest(selector);\n"
-        "    }\n"
-        "    while (el && el.nodeType === 1) {\n"
-        "      if (matches(el, selector)) {\n"
-        "        return el;\n"
-        "      }\n"
-        "      el = el.parentElement;\n"
-        "    }\n"
-        "    return null;\n"
-        "  }\n"
-        "\n"
-        "  function getScript() {\n"
-        "    var script = document.currentScript;\n"
-        "    if (script && script.dataset && script.dataset.rstResize === ROOT_ID) {\n"
-        "      cachedScript = script;\n"
-        "      return script;\n"
-        "    }\n"
-        "    if (!cachedScript || !cachedScript.isConnected) {\n"
-        "      cachedScript = document.querySelector('script[data-rst-resize="' + ROOT_ID + '"]');\n"
-        "    }\n"
-        "    return cachedScript;\n"
-        "  }\n"
-        "\n"
-        "  function getRoot(script) {\n"
-        "    if (!script) {\n"
-        "      return null;\n"
-        "    }\n"
-        "    var root = script.previousElementSibling;\n"
-        "    if (root && root.id === ROOT_ID) {\n"
-        "      return root;\n"
-        "    }\n"
-        "    if (script.parentElement) {\n"
-        "      root = script.parentElement.querySelector('#' + ROOT_ID);\n"
-        "      if (root) {\n"
-        "        return root;\n"
-        "      }\n"
-        "    }\n"
-        "    return document.getElementById(ROOT_ID);\n"
-        "  }\n"
-        "\n"
-        "  function styleElement(el) {\n"
-        "    if (!el) {\n"
-        "      return;\n"
-        "    }\n"
-        "    if (el.classList && el.classList.contains('output_scroll')) {\n"
-        "      el.classList.remove('output_scroll');\n"
-        "    }\n"
-        "    el.style.maxHeight = 'none';\n"
-        "    el.style.height = 'auto';\n"
-        "    el.style.minHeight = '0';\n"
-        "    el.style.overflow = '';\n"      
-        "    el.style.overflowX = 'auto';\n"    # horizontal scrolling
-        "    el.style.overflowY = 'visible';\n"
-        "  }\n"
-        "\n"
-        "  function measureHeight(root) {\n"
-        "    if (!root) {\n"
-        "      return 0;\n"
-        "    }\n"
-        "\n"
-        "    var rect = root.getBoundingClientRect();\n"
-        "    var baseTop = rect ? rect.top : 0;\n"
-        "    var maxBottom = rect ? rect.bottom : 0;\n"
-        "\n"
-        "    var elements = root.getElementsByTagName('*');\n"
-        "    for (var i = 0; i < elements.length; i++) {\n"
-        "      var el = elements[i];\n"
-        "      if (!el || !el.getBoundingClientRect) {\n"
-        "        continue;\n"
-        "      }\n"
-        "      var childRect = el.getBoundingClientRect();\n"
-        "      if (!childRect) {\n"
-        "        continue;\n"
-        "      }\n"
-        "      if (typeof childRect.bottom === 'number' && childRect.bottom > maxBottom) {\n"
-        "        maxBottom = childRect.bottom;\n"
-        "      }\n"
-        "    }\n"
-        "\n"
-        "    var computed = [\n"
-        "      root.scrollHeight || 0,\n"
-        "      root.offsetHeight || 0,\n"
-        "      rect ? rect.height : 0,\n"
-        "      maxBottom - baseTop\n"
-        "    ];\n"
-        "\n"
-        "    var height = 0;\n"
-        "    for (var j = 0; j < computed.length; j++) {\n"
-        "      if (computed[j] > height) {\n"
-        "        height = computed[j];\n"
-        "      }\n"
-        "    }\n"
-        "\n"
-        "    return Math.ceil(height);\n"
-        "  }\n"
-        "\n"
-        "  function applyHeight(el, height) {\n"
-        "    if (!el || !height) {\n"
-        "      return;\n"
-        "    }\n"
-        "    el.style.minHeight = height + 'px';\n"
-        "    el.style.height = height + 'px';\n"
-        "  }\n"
-        "\n"
-        "  function adjustOnce() {\n"
-        "    var script = getScript();\n"
-        "    if (!script) {\n"
-        "      return;\n"
-        "    }\n"
-        "    var root = getRoot(script);\n"
-        "    if (!root) {\n"
-        "      return;\n"
-        "    }\n"
-        "\n"
-        "    var container = closest(root, '.output_subarea');\n"
-        "    if (!container) {\n"
-        "      container = closest(root, '.jp-RenderedHTMLCommon');\n"
-        "    }\n"
-        "    if (!container) {\n"
-        "      container = closest(root, '.jp-OutputArea-output');\n"
-        "    }\n"
-        "    if (!container) {\n"
-        "      container = root.parentElement;\n"
-        "    }\n"
-        "\n"
-        "    var scrollable = container ? container.querySelector('.output_scroll') : null;\n"
-        "    var directTargets = [];\n"
-        "    if (scrollable) {\n"
-        "      directTargets.push(scrollable);\n"
-        "    }\n"
-        "    if (container) {\n"
-        "      directTargets.push(container);\n"
-        "    }\n"
-        "\n"
-        "    var wrappers = [];\n"
-        "    var parent = container ? container.parentElement : null;\n"
-        "    while (parent) {\n"
-        "      wrappers.push(parent);\n"
-        "      if (matches(parent, '.output_area') || matches(parent, '.jp-OutputArea')) {\n"
-        "        break;\n"
-        "      }\n"
-        "      parent = parent.parentElement;\n"
-        "    }\n"
-        "\n"
-        "    var height = measureHeight(root);\n"
-        "    if (height) {\n"
-        "      height = height + 1;\n"
-        "    }\n"
-        "\n"
-        "    directTargets.forEach(function(el) {\n"
-        "      styleElement(el);\n"
-        "      applyHeight(el, height);\n"
-        "    });\n"
-        "\n"
-        "    wrappers.forEach(function(el) {\n"
-        "      styleElement(el);\n"
-        "      applyHeight(el, height);\n"
-        "    });\n"
-        "\n"
-        "    if (root) {\n"
-        "      root.style.minHeight = height ? height + 'px' : '';\n"
-        "    }\n"
-        "  }\n"
-        "\n"
-        "  function runAdjustments() {\n"
-        "    adjustOnce();\n"
-        "    requestAnimationFrame(adjustOnce);\n"
-        "    setTimeout(adjustOnce, 0);\n"
-        "    setTimeout(adjustOnce, 250);\n"
-        # "    setTimeout(adjustOnce, 1000);\n"
-        # "    setTimeout(adjustOnce, 2000);\n"
-        "  }\n"
-        "\n"
-        "  runAdjustments();\n"
-        "  window.addEventListener('resize', runAdjustments);\n"
-        "})();\n"
-        "</script>"
-    )
+    core_html = _html_to_fragment(html_str)
+    assets_html = _split_document_assets(html_str)
 
+    root_id = _new_root_id()
+    tpl_assets_id = root_id + "-assets"
+    tpl_core_id = root_id + "-core"
+
+    template = r'''
+<div id="__ROOT__" style="margin:0;padding:0;max-width:100%;overflow-x:auto;overflow-y:visible;"></div>
+<template id="__TPL_CORE__">__CORE__</template>
+<template id="__TPL_ASSETS__">__ASSETS__</template>
+<script>
+(function() {
+  var root = document.getElementById('__ROOT__');
+  var coreTpl = document.getElementById('__TPL_CORE__');
+  var assetsTpl = document.getElementById('__TPL_ASSETS__');
+
+  root.innerHTML = coreTpl.innerHTML;
+
+  var holder = document.createElement('div');
+  holder.innerHTML = assetsTpl.innerHTML;
+
+  function filterCss(css){
+    css = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    css = css.replace(/@media[\s\S]*?\{[\s\S]*?\}/gi, function(block){
+      return /(\\bhtml\\b|\\bbody\\b|:root)/i.test(block) ? '' : block;
+    });
+    css = css.replace(/(^|})\s*(?:html|body|:root)\b[^{}]*\{[^{}]*\}/gi, '$1');
+    return css;
+  }
+
+  holder.querySelectorAll('style').forEach(function(s){
+    var ns = document.createElement('style');
+    for (var i=0;i<s.attributes.length;i++) { var a=s.attributes[i]; ns.setAttribute(a.name,a.value); }
+    try { ns.textContent = filterCss(s.textContent || ''); }
+    catch(e){ ns.textContent = s.textContent || ''; }
+    document.head.appendChild(ns);
+  });
+
+  var scripts = Array.prototype.slice.call(holder.querySelectorAll('script'));
+  (function run(i){
+    if (i >= scripts.length) { relaxScroll(); return; }
+    var old = scripts[i], sc = document.createElement('script');
+    for (var j=0;j<old.attributes.length;j++) { var a=old.attributes[j]; sc.setAttribute(a.name,a.value); }
+    sc.text = old.text || old.textContent || "";
+    sc.onload = function(){ run(i+1); };
+    sc.onerror = function(){ run(i+1); };
+    document.body.appendChild(sc);
+    if (!sc.src) run(i+1);
+  })(0);
+
+  function relaxScroll(){
+    var el = root;
+    while (el && el !== document.body) {
+      if (el.classList && el.classList.contains('output_scroll')) {
+        el.classList.remove('output_scroll');
+        el.style.maxHeight = 'none';
+        el.style.height = 'auto';
+        el.style.overflow = 'visible';
+        break;
+      }
+      el = el.parentElement;
+    }
+  }
+})();
+</script>
+'''
+    return (template
+            .replace('__ROOT__', root_id)
+            .replace('__TPL_CORE__', tpl_core_id)
+            .replace('__TPL_ASSETS__', tpl_assets_id)
+            .replace('__CORE__', core_html)
+            .replace('__ASSETS__', assets_html))
 
 
 def render(rs3_source, *, display_inline=True, colab=False):
@@ -1025,7 +964,6 @@ def render(rs3_source, *, display_inline=True, colab=False):
     """
 
     temp_path = None
-    rs3_path = None
 
     if hasattr(rs3_source, "read"):
         rs3_content = rs3_source.read()
@@ -1058,7 +996,6 @@ def render(rs3_source, *, display_inline=True, colab=False):
             os.unlink(temp_path.name)
 
     already_displayed = False
-    display_html = html_str
     if colab:
         display_html = _wrap_for_colab(html_str)
     else:
@@ -1083,7 +1020,7 @@ def render(rs3_source, *, display_inline=True, colab=False):
 def embed_rs3_image(rs3_filepath, shrink_to_fit=True):
     """Render an RST tree given the path to an .rs3 file."""
     from IPython.display import display, Image
-    display(Image(rs3topng(rs3_filepath), unconfined=not(shrink_to_fit)))
+    display(Image(rs3topng(rs3_filepath), unconfined=not (shrink_to_fit)))
 
 
 def embed_rs3str_image(rs3_string, shrink_to_fit=True):
@@ -1096,7 +1033,7 @@ def embed_rs3str_image(rs3_string, shrink_to_fit=True):
 
 def cli(argv=sys.argv[1:]):
     parser = argparse.ArgumentParser(
-    description="Convert an RS3 file into an HTML file containing the RST tree.")
+        description="Convert an RS3 file into an HTML file containing the RST tree.")
     parser.add_argument('rs3_file')
     parser.add_argument('output_file', nargs='?')
     parser.add_argument(
@@ -1109,7 +1046,8 @@ def cli(argv=sys.argv[1:]):
     args = parser.parse_args(argv)
 
     if args.debug:
-        import pudb; pudb.set_trace()
+        import pudb;
+        pudb.set_trace()
 
     if args.output_format == 'png':
         if args.output_file:
