@@ -148,7 +148,7 @@ If you’re in **Google Colab**, pass `colab=True` to keep the output cell heigh
 isanlp_rst.render("output.rs3", colab=True)
 ```
 
-<img src="examples/example-inline.png" alt="Illustration of the parsing visualization" width="400">
+<img src="examples/example-inline.png" alt="Illustration of the parsing visualization" width="600">
 
 You can also export the `.rs3` file to **PNG** or **PDF**:
 
