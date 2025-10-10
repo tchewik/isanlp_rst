@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import base64
-import json
 import os
 import re
 import sys
@@ -46,37 +45,24 @@ DATA_ROOT_DIR = PACKAGE_ROOT_DIR / "data"
 
 
 def _html_to_fragment(full_html: str) -> str:
-    """Return only <body> contents without any <style>/<script>."""
-    m = re.search(r"(?is)<body[^>]*>(.*?)</body>", full_html)
-    if m:
-        body_inner = m.group(1)
-    else:
-        # fallback: strip <head> and <html> wrappers
-        tmp = re.sub(r"(?is)<head[^>]*>.*?</head>", "", full_html)
-        tmp = re.sub(r"(?is)</?html[^>]*>", "", tmp)
-        body_inner = tmp
-    # remove any style/script that might still be in body
-    core = re.sub(r"(?is)<(style|script)\b[^>]*>.*?</\1>", "", body_inner)
-    return core
-
-
-def _split_document_assets(full_html: str) -> str:
-    """All <style>/<script> from the whole page (head+body)."""
-    return "".join(re.findall(r"(?is)<style[^>]*>.*?</style>|<script[^>]*>.*?</script>", full_html))
-
-
-def _collect_assets_b64(full_html: str):
     """
-    Return assets (styles & scripts) **in original order**,
-    base64-encoding their UTF-8 bytes.
+    Convert a full HTML document into a safe inline fragment:
+    - keep <style> and <script> blocks from <head>
+    - drop <meta>, <title>, etc.
+    - include only the inner HTML of <body>
     """
-    assets = []
-    for m in re.finditer(r"(?is)<(style|script)[^>]*>(.*?)</\1>", full_html):
-        tag = m.group(1).lower()
-        content = m.group(2)
-        b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")  # base64 alphabet is ASCII-safe
-        assets.append({"k": tag, "d": b64})
-    return assets
+    # scripts/styles from anywhere (mostly head)
+    head_assets = re.findall(
+        r"(?is)<style[^>]*>.*?</style>|<script[^>]*>.*?</script>",
+        full_html,
+    )
+    assets_html = "".join(head_assets)
+
+    # body inner HTML (fallback to whole string if no <body>)
+    m_body = re.search(r"(?is)<body[^>]*>(.*?)</body>", full_html)
+    body_inner = m_body.group(1) if m_body else full_html
+
+    return assets_html + body_inner
 
 
 def rs3tohtml(rs3_filepath, user='temp_user', project='rstviewer_temp'):
@@ -779,165 +765,78 @@ def _new_root_id():
 
 
 def _wrap_for_colab(html_str):
-    """
-    Safe Colab wrapper:
-    - inject core HTML (no style/script) directly
-    - inject styles/scripts from base64, decoding as UTF-8 with TextDecoder
-    """
-    core_html = _html_to_fragment(html_str)
-    assets_json = json.dumps(_collect_assets_b64(html_str))
-    core_json = json.dumps(core_html)  # JSON string literal for innerHTML
-
+    # Use fragment so we don't inject <html>/<head>/<body> inside a <div>
+    frag = _html_to_fragment(html_str)
     root_id = _new_root_id()
-
-    template = r'''
-<div id="__ROOT__" style="margin:0;padding:0;"></div>
-<script>
-(function(){
-  var root = document.getElementById('__ROOT__');
-
-  // Core HTML (already without <style>/<script>)
-  root.innerHTML = __CORE_JSON__;
-
-  // Assets (base64), keep original order
-  var assets = __ASSETS_JSON__;
-
-  // Decode base64 -> UTF-8 string (not Latin-1!)
-  var dec = (window.TextDecoder ? new TextDecoder('utf-8') : null);
-  function fromB64UTF8(b64){
-    var bin = atob(b64);
-    if (!dec){
-      // Fallback: best-effort decode if TextDecoder missing (unlikely in Colab/Chrome)
-      try { return decodeURIComponent(escape(bin)); } catch(e) { return bin; }
-    }
-    var bytes = new Uint8Array(bin.length);
-    for (var i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-    return dec.decode(bytes);
-  }
-
-  function addStyle(b64){
-    var s = document.createElement('style');
-    s.textContent = fromB64UTF8(b64);
-    document.head.appendChild(s);
-  }
-  function addScript(b64, next){
-    var sc = document.createElement('script');
-    sc.text = fromB64UTF8(b64);
-    document.body.appendChild(sc);  // inline executes synchronously
-    next();
-  }
-
-  (function run(i){
-    if (i >= assets.length) { afterInit(); return; }
-    var a = assets[i];
-    if (a.k === 'style') { addStyle(a.d); run(i+1); }
-    else { addScript(a.d, function(){ run(i+1); }); }
-  })(0);
-
-  // Resize Colab cell as content settles
-  function docHeight(){
-    return Math.max(
-      document.body.scrollHeight, document.documentElement.scrollHeight,
-      document.body.offsetHeight,  document.documentElement.offsetHeight,
-      document.body.clientHeight,  document.documentElement.clientHeight
-    );
-  }
-  function afterInit(){
-    var frames=0,last=-1,stable=0,need=20,max=600;
-    function tick(){
-      try{
-        var h = docHeight();
-        if (h !== last) { last=h; stable=0; try{ google.colab.output.setIframeHeight(h,false); }catch(e){}; }
-        else if (++stable === need) { try{ google.colab.output.setIframeHeight(last,false); }catch(e){}; return; }
-      }catch(e){}
-      if (++frames < max) requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-    setTimeout(tick,500); setTimeout(tick,1500); setTimeout(tick,3000);
-  }
-})();
-</script>
-'''
-    return (template
-            .replace('__ROOT__', root_id)
-            .replace('__CORE_JSON__', core_json)
-            .replace('__ASSETS_JSON__', assets_json))
+    return (
+        f'<div id="{root_id}" style="margin:0;padding:0;">{frag}</div>\n'
+        "<script>\n"
+        "(function() {\n"
+        "  const maxFrames = 1000;\n"
+        "  const stableNeeded = 20;\n"
+        "  let last = -1;\n"
+        "  let stable = 0;\n"
+        "  let frames = 0;\n"
+        "  function hDoc() {\n"
+        "    return Math.max(\n"
+        "      document.body.scrollHeight,\n"
+        "      document.documentElement.scrollHeight,\n"
+        "      document.body.offsetHeight,\n"
+        "      document.documentElement.offsetHeight,\n"
+        "      document.body.clientHeight,\n"
+        "      document.documentElement.clientHeight\n"
+        "    );\n"
+        "  }\n"
+        "  function tick() {\n"
+        "    try {\n"
+        "      const h = hDoc();\n"
+        "      if (h !== last) {\n"
+        "        last = h;\n"
+        "        stable = 0;\n"
+        "        google.colab.output.setIframeHeight(h, false);\n"
+        "      } else if (++stable === stableNeeded) {\n"
+        "        google.colab.output.setIframeHeight(last, false);\n"
+        "        return;\n"
+        "      }\n"
+        "    } catch (e) {}\n"
+        "    if (++frames < maxFrames) requestAnimationFrame(tick);\n"
+        "    else { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }\n"
+        "  }\n"
+        "  setTimeout(() => requestAnimationFrame(tick), 0);\n"
+        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 500);\n"
+        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 1500);\n"
+        "  setTimeout(() => { try { google.colab.output.setIframeHeight(hDoc(), false); } catch(e) {} }, 3000);\n"
+        "})();\n"
+        "</script>"
+    )
 
 
 def _wrap_for_notebook(html_str):
-    core_html = _html_to_fragment(html_str)
-    assets_html = _split_document_assets(html_str)
-
+    # Use fragment so we don't inject <html>/<head>/<body> inside a <div>
+    frag = _html_to_fragment(html_str)
     root_id = _new_root_id()
-    tpl_assets_id = root_id + "-assets"
-    tpl_core_id = root_id + "-core"
 
-    template = r'''
-<div id="__ROOT__" style="margin:0;padding:0;max-width:100%;overflow-x:auto;overflow-y:visible;"></div>
-<template id="__TPL_CORE__">__CORE__</template>
-<template id="__TPL_ASSETS__">__ASSETS__</template>
-<script>
-(function() {
-  var root = document.getElementById('__ROOT__');
-  var coreTpl = document.getElementById('__TPL_CORE__');
-  var assetsTpl = document.getElementById('__TPL_ASSETS__');
-
-  root.innerHTML = coreTpl.innerHTML;
-
-  var holder = document.createElement('div');
-  holder.innerHTML = assetsTpl.innerHTML;
-
-  function filterCss(css){
-    css = css.replace(/\/\*[\s\S]*?\*\//g, '');
-    css = css.replace(/@media[\s\S]*?\{[\s\S]*?\}/gi, function(block){
-      return /(\\bhtml\\b|\\bbody\\b|:root)/i.test(block) ? '' : block;
-    });
-    css = css.replace(/(^|})\s*(?:html|body|:root)\b[^{}]*\{[^{}]*\}/gi, '$1');
-    return css;
-  }
-
-  holder.querySelectorAll('style').forEach(function(s){
-    var ns = document.createElement('style');
-    for (var i=0;i<s.attributes.length;i++) { var a=s.attributes[i]; ns.setAttribute(a.name,a.value); }
-    try { ns.textContent = filterCss(s.textContent || ''); }
-    catch(e){ ns.textContent = s.textContent || ''; }
-    document.head.appendChild(ns);
-  });
-
-  var scripts = Array.prototype.slice.call(holder.querySelectorAll('script'));
-  (function run(i){
-    if (i >= scripts.length) { relaxScroll(); return; }
-    var old = scripts[i], sc = document.createElement('script');
-    for (var j=0;j<old.attributes.length;j++) { var a=old.attributes[j]; sc.setAttribute(a.name,a.value); }
-    sc.text = old.text || old.textContent || "";
-    sc.onload = function(){ run(i+1); };
-    sc.onerror = function(){ run(i+1); };
-    document.body.appendChild(sc);
-    if (!sc.src) run(i+1);
-  })(0);
-
-  function relaxScroll(){
-    var el = root;
-    while (el && el !== document.body) {
-      if (el.classList && el.classList.contains('output_scroll')) {
-        el.classList.remove('output_scroll');
-        el.style.maxHeight = 'none';
-        el.style.height = 'auto';
-        el.style.overflow = 'visible';
-        break;
-      }
-      el = el.parentElement;
-    }
-  }
-})();
-</script>
-'''
-    return (template
-            .replace('__ROOT__', root_id)
-            .replace('__TPL_CORE__', tpl_core_id)
-            .replace('__TPL_ASSETS__', tpl_assets_id)
-            .replace('__CORE__', core_html)
-            .replace('__ASSETS__', assets_html))
+    return (
+        f'<div id="{root_id}" '
+        'style="margin:0;padding:0;max-width:100%;overflow-x:auto;overflow-y:visible;">'
+        f"{frag}</div>\n"
+        f"<script data-rst-resize=\"{root_id}\">\n"
+        "(function() {\n"
+        f"  var ROOT_ID = {root_id!r};\n"
+        "  var cachedScript = null;\n"
+        "  function matches(el, sel){var p=Element.prototype;var f=p.matches||p.msMatchesSelector||p.webkitMatchesSelector;return el&&f?f.call(el,sel):false}\n"
+        "  function closest(el, sel){if(!el)return null;if(el.closest)return el.closest(sel);while(el&&el.nodeType===1){if(matches(el,sel))return el;el=el.parentElement}return null}\n"
+        "  function getScript(){var s=document.currentScript;if(s&&s.dataset&&s.dataset.rstResize===ROOT_ID){cachedScript=s;return s}if(!cachedScript||!cachedScript.isConnected){cachedScript=document.querySelector('script[data-rst-resize=\"'+ROOT_ID+'\"]')}return cachedScript}\n"
+        "  function getRoot(s){if(!s)return null;var r=s.previousElementSibling;if(r&&r.id===ROOT_ID)return r;if(s.parentElement){r=s.parentElement.querySelector('#'+ROOT_ID);if(r)return r}return document.getElementById(ROOT_ID)}\n"
+        "  function styleEl(el){if(!el)return; if(el.classList&&el.classList.contains('output_scroll'))el.classList.remove('output_scroll'); el.style.maxHeight='none'; el.style.height='auto'; el.style.minHeight='0'; el.style.overflow=''; el.style.overflowX='auto'; el.style.overflowY='visible'}\n"
+        "  function measure(root){if(!root)return 0;var rect=root.getBoundingClientRect();var baseTop=rect?rect.top:0;var maxBottom=rect?rect.bottom:0;var els=root.getElementsByTagName('*');for(var i=0;i<els.length;i++){var e=els[i];if(!e||!e.getBoundingClientRect)continue;var r=e.getBoundingClientRect();if(r&&typeof r.bottom==='number'&&r.bottom>maxBottom)maxBottom=r.bottom}var computed=[root.scrollHeight||0,root.offsetHeight||0,rect?rect.height:0,maxBottom-baseTop];var h=0;for(var j=0;j<computed.length;j++){if(computed[j]>h)h=computed[j]}return Math.ceil(h)}\n"
+        "  function apply(el,h){if(!el||!h)return;el.style.minHeight=h+'px';el.style.height=h+'px'}\n"
+        "  function adjust(){var s=getScript();if(!s)return;var root=getRoot(s);if(!root)return;var container=closest(root,'.output_subarea')||closest(root,'.jp-RenderedHTMLCommon')||closest(root,'.jp-OutputArea-output')||root.parentElement;var scrollable=container?container.querySelector('.output_scroll'):null;var direct=[];if(scrollable)direct.push(scrollable);if(container)direct.push(container);var wrappers=[];var p=container?container.parentElement:null;while(p){wrappers.push(p);if(matches(p,'.output_area')||matches(p,'.jp-OutputArea'))break;p=p.parentElement}var h=measure(root);if(h)h=h+1;direct.forEach(function(el){styleEl(el);apply(el,h)});wrappers.forEach(function(el){styleEl(el);apply(el,h)});if(root)root.style.minHeight=h?h+'px':''}\n"
+        "  function run(){adjust();requestAnimationFrame(adjust);setTimeout(adjust,0);setTimeout(adjust,250)}\n"
+        "  run();window.addEventListener('resize', run);\n"
+        "})();\n"
+        "</script>"
+    )
 
 
 def render(rs3_source, *, display_inline=True, colab=False):
@@ -1015,20 +914,6 @@ def render(rs3_source, *, display_inline=True, colab=False):
         html_str,
         already_displayed=already_displayed,
         display_override=display_html if display_html != html_str else None)
-
-
-def embed_rs3_image(rs3_filepath, shrink_to_fit=True):
-    """Render an RST tree given the path to an .rs3 file."""
-    from IPython.display import display, Image
-    display(Image(rs3topng(rs3_filepath), unconfined=not (shrink_to_fit)))
-
-
-def embed_rs3str_image(rs3_string, shrink_to_fit=True):
-    """Render an RST tree given the string content of a .rs3 file."""
-    temp = tempfile.NamedTemporaryFile(suffix='.rs3', delete=False)
-    temp.write(rs3_string.encode('utf8'))
-    temp.close()
-    embed_rs3_image(temp.name, shrink_to_fit=shrink_to_fit)
 
 
 def cli(argv=sys.argv[1:]):

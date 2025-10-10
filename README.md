@@ -96,15 +96,15 @@ To use the IsaNLP RST Parser locally, follow these steps:
    The output is an RST tree with the following structure:
 
    ```python
-   {
-     'id': 7,
-     'left': <isanlp.annotation_rst.DiscourseUnit at 0x7f771076add0>,
-     'right': <isanlp.annotation_rst.DiscourseUnit at 0x7f7750b93d30>,
-     'relation': 'elaboration',
-     'nuclearity': 'NS',
-     'start': 0,
-     'end': 336,
-     'text': "On Saturday, ... took two wickets.",
+   {'id': 21,
+    'left': (id=14, start=1, end=323),
+    'right': (id=20, start=324, end=570),
+    'relation': 'elaboration',
+    'nuclearity': 'NS',
+    'proba': 1.0,
+    'start': 1,
+    'end': 570,
+    'text': "On Saturday, ... took two wickets.",
    }
    ```
 
@@ -168,6 +168,46 @@ To run the IsaNLP RST Parser using Docker, follow these steps:
    # res['rst'] will contain the binary discourse tree, similar to the previous example
    ```
 
+
+## (Optional) Visualize the predictions
+
+You can preview the RST tree right inside a Jupyter notebook.
+
+```python
+import io, contextlib
+import isanlp_rst
+
+# Suppress the HTML string from being printed to stdout —
+# the widget will render inline instead.
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    isanlp_rst.render("output.rs3")
+```
+
+If you’re in **Google Colab**, pass `colab=True` to keep the output cell height in sync with the rendered tree:
+
+```python
+isanlp_rst.render("output.rs3", colab=True)
+```
+
+You can also export the `.rs3` visualization to **PNG** or **PDF**:
+
+```python
+import isanlp_rst
+
+# PNG
+isanlp_rst.to_png("ex2-rrg.rs3", "ex2-rrg.png")
+
+# PDF
+isanlp_rst.to_pdf("ex2-rrg.rs3", "ex2-rrg.pdf")
+```
+
+> Tip: If you plan to use PNG/PDF export, make sure Playwright is installed:
+>
+> ```bash
+> pip install playwright
+> playwright install chromium
+> ```
 
 
    

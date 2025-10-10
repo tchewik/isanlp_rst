@@ -11,13 +11,12 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
-from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Awaitable, Dict, List, Optional, Union, TYPE_CHECKING
-import xml.etree.ElementTree as ET
+from typing import Any
+from typing import IO, Awaitable, Dict, Optional, Union
 
-from .rstviewer import main as _rst_main
 from .rstviewer import RenderedRST
+from .rstviewer import main as _rst_main
 
 try:  # pragma: no cover - dependency is optional in tests
     from isanlp.annotation_rst import DiscourseUnit
@@ -30,15 +29,13 @@ __all__ = [
     "to_html",
     "to_png",
     "to_pdf",
-    "write_discourse_unit_as_rs3",
 ]
-
 
 PathLike = Union[str, os.PathLike]
 
 
 def render(rs3_source: Union[PathLike, bytes, IO[str], IO[bytes]], *,
-           display_inline: bool = True, colab: bool = True) -> RenderedRST:
+           display_inline: bool = True, colab: bool = False) -> RenderedRST:
     """Render an RST tree and, optionally, display it inline.
 
     This is a light-weight proxy around :func:`isanlp_rst.rstviewer.main.render`.
@@ -73,19 +70,29 @@ def to_html(rs3_path: PathLike, html_path: Optional[PathLike] = None, *,
 def to_png(rs3_path: PathLike, png_path: Optional[PathLike] = None, *,
            base64_encoded: bool = False, device_scale_factor: int = 2,
            timeout_ms: int = 10_000) -> Union[bytes, str, None]:
-    """Render an ``.rs3`` file to PNG.
+    """Render an ``.rs3`` file to PNG (works in both sync and async environments)."""
 
-    This delegates to :func:`isanlp_rst.rstviewer.main.rs3topng`. All keyword arguments are
-    forwarded verbatim.
-    """
+    # If there's no running loop, use the fast sync path.
+    try:
+        _ = asyncio.get_running_loop()
+    except RuntimeError:
+        return _rst_main.rs3topng(
+            os.fspath(rs3_path),
+            png_filepath=os.fspath(png_path) if png_path is not None else None,
+            base64_encoded=base64_encoded,
+            device_scale_factor=device_scale_factor,
+            timeout_ms=timeout_ms,
+        )
 
-    return _rst_main.rs3topng(
+    # Running inside an event loop (e.g., Jupyter) → use the async renderer via a worker.
+    coro = _rst_main.rs3topng_async(
         os.fspath(rs3_path),
         png_filepath=os.fspath(png_path) if png_path is not None else None,
         base64_encoded=base64_encoded,
         device_scale_factor=device_scale_factor,
         timeout_ms=timeout_ms,
     )
+    return _run_coro_sync_result(coro)
 
 
 def to_pdf(rs3_path: PathLike, pdf_path: PathLike, *,
@@ -110,25 +117,23 @@ def to_pdf(rs3_path: PathLike, pdf_path: PathLike, *,
         margin_px=margin_px,
     )
 
-    _run_coro_sync(coro)
+    _run_coro_sync_result(coro)
 
 
-def _run_coro_sync(coro: Awaitable[None]) -> None:
-    """Execute ``coro`` to completion regardless of the current asyncio state."""
-
+def _run_coro_sync_result(coro: Awaitable[T]) -> T:
+    """Execute `coro` to completion and return its result, regardless of asyncio state."""
     try:
         _ = asyncio.get_running_loop()
     except RuntimeError:
-        asyncio.run(coro)
-        return
+        # No running loop → run directly
+        return asyncio.run(coro)
 
-    # When a loop is already running (e.g. Jupyter) fall back to executing the
-    # coroutine inside a dedicated thread.
-    result: Dict[str, Optional[BaseException]] = {"exc": None}
+    # Running loop → run in a worker thread
+    result: Dict[str, Any] = {"exc": None, "value": None}
 
     def _runner() -> None:
         try:
-            asyncio.run(coro)
+            result["value"] = asyncio.run(coro)
         except BaseException as exc:  # pragma: no cover - defensive
             result["exc"] = exc
 
@@ -138,204 +143,4 @@ def _run_coro_sync(coro: Awaitable[None]) -> None:
 
     if result["exc"] is not None:
         raise result["exc"]
-
-
-# ---------------------------------------------------------------------------
-# RS3 serialisation from DiscourseUnit
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _RS3Node:
-    node_id: int
-    kind: str  # "segment" or "group"
-    text: Optional[str] = None
-    group_type: Optional[str] = None
-    parent: Optional[int] = None
-    relname: str = "span"
-
-
-def _get_children(node: "DiscourseUnit") -> List["DiscourseUnit"]:
-    children: List["DiscourseUnit"] = []
-    left = getattr(node, "left", None)
-    right = getattr(node, "right", None)
-    if left is not None:
-        children.append(left)
-    if right is not None:
-        children.append(right)
-    extra = getattr(node, "children", None)
-    if extra:
-        children.extend(extra)
-    return children
-
-
-def _is_leaf(node: "DiscourseUnit") -> bool:
-    return len(_get_children(node)) == 0
-
-
-def _collect_nodes(root: "DiscourseUnit") -> Tuple[Dict[int, _RS3Node], Dict[int, int]]:
-    nodes: Dict[int, _RS3Node] = {}
-    id_map: Dict[int, int] = {}
-    edu_counter = 0
-    group_counter = 0
-
-    def add_edus(node: "DiscourseUnit") -> None:
-        nonlocal edu_counter
-        if _is_leaf(node):
-            edu_counter += 1
-            node_id = edu_counter
-            nodes[node_id] = _RS3Node(
-                node_id=node_id,
-                kind="segment",
-                text=(getattr(node, "text", "") or ""),
-            )
-            id_map[id(node)] = node_id
-        else:
-            for child in _get_children(node):
-                add_edus(child)
-
-    def add_groups(node: "DiscourseUnit") -> None:
-        nonlocal group_counter
-        if _is_leaf(node):
-            return
-
-        for child in _get_children(node):
-            add_groups(child)
-
-        group_counter += 1
-        node_id = edu_counter + group_counter
-        nuc = (getattr(node, "nuclearity", "") or "").upper()
-        group_type = "multinuc" if nuc == "NN" or len(_get_children(node)) > 2 else "span"
-        nodes[node_id] = _RS3Node(node_id=node_id, kind="group", group_type=group_type)
-        id_map[id(node)] = node_id
-
-    add_edus(root)
-    add_groups(root)
-    return nodes, id_map
-
-
-def _assign_structure(root: "DiscourseUnit", nodes: Dict[int, _RS3Node],
-                      id_map: Dict[int, int]) -> Dict[str, str]:
-    relations: Dict[str, str] = {"span": "rst"}
-
-    def visit(node: "DiscourseUnit", parent: Optional["DiscourseUnit"]) -> None:
-        node_id = id_map[id(node)]
-        node_info = nodes[node_id]
-
-        if parent is None:
-            node_info.parent = 0
-            node_info.relname = "span"
-        else:
-            parent_id = id_map[id(parent)]
-            node_info.parent = parent_id
-
-            nuc = (getattr(parent, "nuclearity", "") or "").upper()
-            rel = getattr(parent, "relation", None) or "span"
-            children = _get_children(parent)
-            child_rel_type = "rst"
-
-            if nuc == "NN" or len(children) > 2:
-                # Multinuclear nodes: children share the same relation label.
-                node_info.relname = rel
-                child_rel_type = "multinuc"
-            else:
-                is_left_child = children and node is children[0]
-                if nuc == "SN":
-                    is_nucleus = not is_left_child
-                elif nuc == "NS":
-                    is_nucleus = is_left_child
-                else:
-                    # Default: treat the first child as the nucleus
-                    is_nucleus = is_left_child
-
-                if is_nucleus:
-                    node_info.relname = "span"
-                else:
-                    node_info.relname = rel
-
-            relname = (node_info.relname or "span").strip() or "span"
-            node_info.relname = relname
-            relations.setdefault(relname, child_rel_type)
-
-        for child in _get_children(node):
-            visit(child, node)
-
-    visit(root, None)
-    return relations
-
-
-def _build_xml(nodes: Dict[int, _RS3Node], relations: Dict[str, str]) -> ET.Element:
-    rst_el = ET.Element("rst")
-    header_el = ET.SubElement(rst_el, "header")
-    rels_el = ET.SubElement(header_el, "relations")
-
-    for relname in sorted(relations):
-        rel_type = relations[relname]
-        ET.SubElement(rels_el, "rel", {"name": relname, "type": rel_type})
-
-    body_el = ET.SubElement(rst_el, "body")
-    for node_id in sorted(nodes):
-        info = nodes[node_id]
-        attrs = {"id": str(info.node_id)}
-        if info.parent is not None:
-            attrs["parent"] = str(info.parent)
-        if info.relname:
-            attrs["relname"] = info.relname
-
-        if info.kind == "segment":
-            seg_el = ET.SubElement(body_el, "segment", attrs)
-            seg_el.text = info.text or ""
-        else:
-            attrs["type"] = info.group_type or "span"
-            ET.SubElement(body_el, "group", attrs)
-
-    _indent_xml(rst_el)
-    return rst_el
-
-
-def _indent_xml(element: ET.Element, level: int = 0) -> None:
-    indent = "\n" + "  " * level
-    children = list(element)
-    if children:
-        if element.tag != "segment":
-            if not element.text or not element.text.strip():
-                element.text = indent + "  "
-        for child in children:
-            _indent_xml(child, level + 1)
-            if not child.tail or not child.tail.strip():
-                child.tail = indent + "  "
-        if not children[-1].tail or not children[-1].tail.strip():
-            children[-1].tail = indent
-    elif level and (not element.tail or not element.tail.strip()):
-        element.tail = indent
-
-
-def write_discourse_unit_as_rs3(tree: "DiscourseUnit", output_path: PathLike) -> Path:
-    """Serialise ``tree`` into the RS3 format and write it to ``output_path``."""
-
-    if DiscourseUnit is None:  # pragma: no cover - defensive runtime guard
-        raise ImportError(
-            "isanlp.annotation_rst.DiscourseUnit is required to serialise RS3 trees."
-        )
-
-    nodes, id_map = _collect_nodes(tree)
-    relations = _assign_structure(tree, nodes, id_map)
-    xml_root = _build_xml(nodes, relations)
-
-    output_path = Path(output_path)
-    ET.ElementTree(xml_root).write(output_path, encoding="utf-8", xml_declaration=True)
-    return output_path
-
-
-def _discourse_unit_to_rs3(self: "DiscourseUnit", output_path: PathLike) -> Path:
-    return write_discourse_unit_as_rs3(self, output_path)
-
-
-if DiscourseUnit is not None and not hasattr(DiscourseUnit, "to_rs3"):
-    DiscourseUnit.to_rs3 = _discourse_unit_to_rs3  # type: ignore[attr-defined]
-
-
-if TYPE_CHECKING:  # pragma: no cover - typing aid only
-    # ``DiscourseUnit`` is optional at runtime; make mypy aware of the helper.
-    class _DiscourseUnitProto:
-        def to_rs3(self, output_path: PathLike) -> Path: ...
+    return result["value"]  # type: ignore[return-value]
