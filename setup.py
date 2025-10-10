@@ -1,3 +1,4 @@
+import os
 from setuptools import setup, find_packages
 
 
@@ -29,7 +30,7 @@ def gen_data_files(src_dir):
 
 setup(
     name='isanlp_rst',
-    version='3.1.0',
+    version='3.1.1',
     description='IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
