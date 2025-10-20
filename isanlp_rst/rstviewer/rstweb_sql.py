@@ -20,7 +20,7 @@ import tempfile
 from .rstweb_reader import *  # noqa: F401,F403  (re-exported API)
 
 
-with tempfile.NamedTemporaryFile(dir="./tmp", delete=False) as tmpfile:
+with tempfile.NamedTemporaryFile(delete=False) as tmpfile:
     DBPATH = tmpfile.name
 
 
