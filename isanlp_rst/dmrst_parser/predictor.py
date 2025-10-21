@@ -44,7 +44,7 @@ class Predictor:
         if self.mode == 'local':
             self.model_file = os.path.join(model_dir, _file_model)
             self.config_path = os.path.join(model_dir, _file_config)
-            self.relation_table = open(_file_relation_table, 'r').read().splitlines()
+            self.relation_table = open(os.path.join(model_dir, _file_relation_table), 'r').read().splitlines()
 
         elif self.mode == 'hf':
             self.hf_model_name = hf_model_name
