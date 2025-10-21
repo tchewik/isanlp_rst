@@ -30,7 +30,7 @@ def gen_data_files(src_dir):
 
 setup(
     name='isanlp_rst',
-    version='3.1.1',
+    version='3.1.1a',
     description='IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',

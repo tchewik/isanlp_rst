@@ -145,7 +145,7 @@ with contextlib.redirect_stdout(buf):
 If you’re in **Google Colab**, pass `colab=True` to keep the output cell height in sync with the rendered tree:
 
 ```python
-isanlp_rst.render("output.rs3", colab=True)
+isanlp_rst.render("filename.rs3", colab=True)
 ```
 
 <img src="examples/example-inline.png" alt="Illustration of the parsing visualization" width="600">
