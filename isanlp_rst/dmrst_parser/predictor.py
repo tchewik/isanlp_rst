@@ -5,7 +5,7 @@ from bisect import bisect_right
 import razdel
 import torch
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 from huggingface_hub import hf_hub_download
 
 from .du_converter import DUConverter
@@ -66,7 +66,8 @@ class Predictor:
 
     def _load_model(self):
         self.tokenizer = AutoTokenizer.from_pretrained(self.config['model']['transformer']['model_name'], use_fast=True)
-        transformer = AutoModel.from_pretrained(self.config['model']['transformer']['model_name']).to(self._cuda_device)
+        config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
+        transformer = AutoModel.from_config(config).to(self._cuda_device)
 
         self.tokenizer.add_tokens(['<P>'])
         transformer.resize_token_embeddings(len(self.tokenizer))
