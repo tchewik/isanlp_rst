@@ -12,7 +12,7 @@ import razdel
 import torch
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoConfig
 
 from isanlp.annotation import Token
 from .data_manager import DataManager  # noqa: F401 - ensure module is registered for pickle
@@ -244,15 +244,13 @@ class Predictor:
             self.config['model']['transformer']['model_name'],
             use_fast=True,
         )
-        transformer = AutoModel.from_pretrained(
-            self.config['model']['transformer']['model_name']
-        ).to(self._cuda_device)
+        transformer_config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
+        transformer = AutoModel.from_config(transformer_config).to(self._cuda_device)
 
         self.tokenizer.add_tokens(['<P>'])
         transformer.resize_token_embeddings(len(self.tokenizer))
 
         rel_tables = self.relation_tables
-        has_data_managers = all(dm is not None for dm in self.data_managers)
         use_union = (
             bool(self.config['model'].get('use_union_relations'))
             and len(rel_tables) > 1
@@ -705,7 +703,6 @@ class Predictor:
         predictions['true_spans'] += batch.golden_metric
         predictions['true_edu_breaks'] += batch.edu_breaks
 
-        print(f'{predictions = }')
         duc = DUConverter(predictions, tokenization_type='default')
         tree = duc.collect(tokens=data['input_sentences'])[0]
 

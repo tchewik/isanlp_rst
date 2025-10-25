@@ -66,8 +66,8 @@ class Predictor:
 
     def _load_model(self):
         self.tokenizer = AutoTokenizer.from_pretrained(self.config['model']['transformer']['model_name'], use_fast=True)
-        config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
-        transformer = AutoModel.from_config(config).to(self._cuda_device)
+        transformer_config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
+        transformer = AutoModel.from_config(transformer_config).to(self._cuda_device)
 
         self.tokenizer.add_tokens(['<P>'])
         transformer.resize_token_embeddings(len(self.tokenizer))
