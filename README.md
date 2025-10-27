@@ -84,7 +84,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
    vars(res['rst'][0])
    ```
 
-   To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.code.dataset'`, as listed in the performance table. The default inventory for UniRST is `eng.rst.rstdt`. 
+   To use the multilingual UniRST model, you can specify the required relation inventory with `relinventory='lang.code.dataset'`, as listed in the [performance table](https://github.com/tchewik/isanlp_rst/blob/master/UniRST_Metrics.md). The default inventory for UniRST is `eng.rst.rstdt`. 
    
    ```python
    parser = Parser(hf_model_name='tchewik/isanlp_rst_v3',
