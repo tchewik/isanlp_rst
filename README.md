@@ -217,6 +217,8 @@ To run the IsaNLP RST Parser using Docker, follow these steps:
 
 If you use the IsaNLP RST Parser in your research, please cite our work as follows:
 
+- `rstdt`, `gumrrg`, and `rstreebank` models:
+
   ```bibtex
   @inproceedings{
    chistova-2024-bilingual,
@@ -230,4 +232,18 @@ If you use the IsaNLP RST Parser in your research, please cite our work as follo
    url = "https://aclanthology.org/2024.findings-acl.577",
    pages = "9689--9706"
   }
+
+- `unirst` model:
+  ```bibtex
+  @inproceedings{chistova-2025-bridging,
+    title = "Bridging Discourse Treebanks with a Unified Rhetorical Structure Parser",
+    author = "Chistova, Elena",
+    booktitle = "Proceedings of the 6th Workshop on Computational Approaches to Discourse, Context and Document-Level Inferences (CODI 2025)",
+    month = nov,
+    year = "2025",
+    address = "Suzhou, China",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2025.codi-1.17/",
+    pages = "197--208"
+   }
   ```
