@@ -220,8 +220,7 @@ If you use the IsaNLP RST Parser in your research, please cite our work as follo
 - `rstdt`, `gumrrg`, and `rstreebank` models:
 
   ```bibtex
-  @inproceedings{
-   chistova-2024-bilingual,
+  @inproceedings{chistova-2024-bilingual,
    title = "Bilingual Rhetorical Structure Parsing with Large Parallel Annotations",
    author = "Chistova, Elena",
    booktitle = "Findings of the Association for Computational Linguistics ACL 2024",
