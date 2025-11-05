@@ -1,5 +1,8 @@
+from typing import Sequence
+
 from .dmrst_parser.predictor import Predictor as PredictorDMRST
 from .universal_parser.predictor import Predictor as PredictorUniversal
+
 
 class Parser:
     DMRST_PARSERS = ('gumrrg', 'rstdt', 'rstreebank')
@@ -37,3 +40,8 @@ class Parser:
 
     def __call__(self, text: str):
         return self.predictor.parse_rst(text)
+
+    def parse_from_edus(self, edus: Sequence[str]):
+        """Parse a document using predefined EDUs."""
+
+        return self.predictor.parse_from_edus(edus)

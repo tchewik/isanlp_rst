@@ -462,11 +462,11 @@ class ParsingNet(nn.Module):
 
         if use_pred_segmentation:
             edu_breaks = predict_edu_breaks
-            if label_index is None and parsing_index is None:
-                label_index = [[0, ] * (len(i) - 1) for i in edu_breaks]
-                parsing_index = [[0, ] * (len(i) - 1) for i in edu_breaks]
         else:
             edu_breaks = input_edu_breaks
+
+        label_index = [[0, ] * (len(i) - 1) for i in edu_breaks]
+        parsing_index = [[0, ] * (len(i) - 1) for i in edu_breaks]
 
         label_loss_function = nn.NLLLoss()
         span_loss_function = nn.NLLLoss()
