@@ -65,7 +65,12 @@ class Predictor:
         self._load_model()
 
     def _load_model(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config['model']['transformer']['model_name'], use_fast=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.config['model']['transformer']['model_name'],
+            use_fast=True,
+        )
+        self.tokenizer.model_max_length = int(1e9)  # The parser relies on a sliding window encoding, so we'll suppress the max_len warning this way.
+
         transformer_config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
         transformer = AutoModel.from_config(transformer_config).to(self._cuda_device)
 
