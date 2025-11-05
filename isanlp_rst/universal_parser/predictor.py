@@ -867,11 +867,6 @@ class Predictor:
                 use_pred_segmentation=False,
                 dataset_index=batch.dataset_index,
             )
-            
-        print(f'{predict_edu_breaks = }')
-        print(f'{batch.edu_breaks = }')
-
-        assert predict_edu_breaks == batch.edu_breaks
 
         predictions['tokens'] += [
             self.tokenizer.convert_ids_to_tokens(text) for text in batch.input_sentences
