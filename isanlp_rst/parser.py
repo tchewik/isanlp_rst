@@ -41,7 +41,7 @@ class Parser:
     def __call__(self, text: str):
         return self.predictor.parse_rst(text)
 
-    def parse_from_edus(self, edus: Sequence[str]):
+    def from_edus(self, edus: Sequence[str]):
         """Parse a document using predefined EDUs."""
 
         return self.predictor.parse_from_edus(edus)

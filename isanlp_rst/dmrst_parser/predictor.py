@@ -378,9 +378,9 @@ class PredictorDMRST:
             return
 
         if left is not None:
-            Predictor._collect_leaf_texts(left, acc)
+            PredictorDMRST._collect_leaf_texts(left, acc)
         if right is not None:
-            Predictor._collect_leaf_texts(right, acc)
+            PredictorDMRST._collect_leaf_texts(right, acc)
 
     def parse_rst(self, text: str):
         """

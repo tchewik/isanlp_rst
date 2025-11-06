@@ -132,20 +132,16 @@ class EncoderRNN(nn.Module):
             cur_sent_break = sent_breaks[i] if sent_breaks else None
             if is_test:
                 cur_edu_break = self.segmenter.test_segment_loss(embeddings.squeeze(), cur_sent_break)
-                predict_edu_breaks_list.append(cur_edu_break)
             else:
                 cur_edu_break = edu_breaks[i]  # Only gold segmentation for parser during training
-                total_edu_loss += self.segmenter.train_segment_loss(embeddings.squeeze(), cur_edu_break, cur_sent_break)
+
+            predict_edu_breaks_list.append(cur_edu_break)
 
             outputs, hidden = self.encode_edus(self.dropout(embeddings.squeeze(dim=0)), cur_edu_break)
             tem_outputs.append(outputs)
             all_hidden.append(hidden)
 
-        if edu_breaks is not None or not is_test:
-            max_edu_break_num = max([len(tmp_l) for tmp_l in edu_breaks])
-
-        if is_test:
-            max_edu_break_num = max([len(tmp_l) for tmp_l in predict_edu_breaks_list])
+        max_edu_break_num = max([len(tmp_l) for tmp_l in predict_edu_breaks_list])
 
         for output in tem_outputs:
             batch_size, cur_break_num, edu_dim = output.shape
