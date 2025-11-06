@@ -1,18 +1,17 @@
 import json
 import os
-from bisect import bisect_right
-from typing import List, Sequence, Tuple
-
 import razdel
 import torch
+from bisect import bisect_right
+from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoConfig
-from huggingface_hub import hf_hub_download
+from typing import List, Sequence, Tuple
 
-from .du_converter import DUConverter
+from isanlp_rst.base_predictor import BasePredictor
+from isanlp_rst.utils.du_converter import DUConverter
 from .src.parser.data import Data
 from .src.parser.parsing_net import ParsingNet
-from .trainer import Trainer
 
 
 def str2bool(value):
@@ -23,7 +22,7 @@ def str2bool(value):
         return value.lower() == 'true'
 
 
-class PredictorDMRST:
+class PredictorDMRST(BasePredictor):
     def __init__(self,
                  model_dir: str = None,
                  hf_model_name: str = None,
@@ -70,7 +69,8 @@ class PredictorDMRST:
             self.config['model']['transformer']['model_name'],
             use_fast=True,
         )
-        self.tokenizer.model_max_length = int(1e9)  # The parser relies on a sliding window encoding, so we'll suppress the max_len warning this way.
+        self.tokenizer.model_max_length = int(
+            1e9)  # The parser relies on a sliding window encoding, so we'll suppress the max_len warning this way.
 
         transformer_config = AutoConfig.from_pretrained(self.config['model']['transformer']['model_name'])
         transformer = AutoModel.from_config(transformer_config).to(self._cuda_device)
@@ -184,7 +184,7 @@ class PredictorDMRST:
         subword_edu_breaks = []
         for doc_word_offsets, doc_subword_offsets, edu_breaks in zip(
                 word_offsets, tokens['offset_mapping'], data.edu_breaks):
-            subword_edu_breaks.append(Trainer.recount_spans(doc_word_offsets, doc_subword_offsets, edu_breaks))
+            subword_edu_breaks.append(self._recount_spans(doc_word_offsets, doc_subword_offsets, edu_breaks))
 
         return Data(
             input_sentences=tokens['input_ids'],
@@ -199,14 +199,6 @@ class PredictorDMRST:
             parents_index=data.parents_index,
             sibling=data.sibling
         )
-
-    @staticmethod
-    def divide_chunks(_list, n):
-        if _list:
-            for i in range(0, len(_list), n):
-                yield _list[i:min(i + n, len(_list))]
-        else:
-            yield _list
 
     def get_batches(self, data: Data, size: int):
         """ Splits a batch into multiple smaller with given size. """
@@ -226,7 +218,6 @@ class PredictorDMRST:
              relation_label, parsing_breaks, golden_metric
              ) in tqdm(zip(_input_sentences, _edu_breaks, _decoder_input,
                            _relation_label, _parsing_breaks, _golden_metric), total=len(_input_sentences)):
-
             batches.append(
                 Data(
                     input_sentences=input_sentences,
@@ -244,62 +235,6 @@ class PredictorDMRST:
             )
 
         return batches
-
-    @staticmethod
-    def _build_offset_converter(tokens):
-        positions = []
-        originals = []
-        cursor = 0
-
-        for idx, token in enumerate(tokens):
-            token_text = token.text
-            for char_idx in range(len(token_text)):
-                positions.append(cursor)
-                originals.append(token.start + char_idx)
-                cursor += 1
-
-            positions.append(cursor)
-            originals.append(token.stop)
-
-            if idx != len(tokens) - 1:
-                cursor += 1
-
-        if not positions:
-            positions = [0]
-            originals = [0]
-
-        return positions, originals
-
-    @staticmethod
-    def _map_offset(value, positions, originals):
-        if not positions:
-            return value
-
-        index = bisect_right(positions, value) - 1
-        if index < 0:
-            index = 0
-        elif index >= len(originals):
-            index = len(originals) - 1
-
-        return originals[index]
-
-    def _remap_tree_offsets(self, unit, positions, originals, original_text):
-        left = getattr(unit, 'left', None)
-        right = getattr(unit, 'right', None)
-
-        if left is not None:
-            self._remap_tree_offsets(left, positions, originals, original_text)
-        if right is not None:
-            self._remap_tree_offsets(right, positions, originals, original_text)
-
-        if left is None and right is None:
-            unit.start = self._map_offset(unit.start, positions, originals)
-            unit.end = self._map_offset(unit.end, positions, originals)
-        else:
-            unit.start = left.start if left is not None else self._map_offset(unit.start, positions, originals)
-            unit.end = right.end if right is not None else self._map_offset(unit.end, positions, originals)
-
-        unit.text = original_text[unit.start:unit.end]
 
     def _validate_edus(self, edus: Sequence[str]) -> List[str]:
         if edus is None:
@@ -368,20 +303,6 @@ class PredictorDMRST:
 
         return edu_breaks
 
-    @staticmethod
-    def _collect_leaf_texts(unit, acc: List[str]) -> None:
-        left = getattr(unit, 'left', None)
-        right = getattr(unit, 'right', None)
-
-        if left is None and right is None:
-            acc.append(unit.text)
-            return
-
-        if left is not None:
-            PredictorDMRST._collect_leaf_texts(left, acc)
-        if right is not None:
-            PredictorDMRST._collect_leaf_texts(right, acc)
-
     def parse_rst(self, text: str):
         """
         Parses the given text to generate a tree of rhetorical structure.
@@ -396,7 +317,7 @@ class PredictorDMRST:
         # Prepare the input data
         razdel_tokens = list(razdel.tokenize(text))
         tokenized_text = [token.text for token in razdel_tokens]
-        offset_positions, original_offsets = self._build_offset_converter(razdel_tokens)
+        offset_positions, original_offsets = self.build_offset_converter_from_razdel(razdel_tokens)
         data = {
             'input_sentences': [tokenized_text],
             'edu_breaks': [[]],
@@ -408,7 +329,7 @@ class PredictorDMRST:
 
         if len(tokenized_text) < 3:
             tree = DUConverter.dummy_tree(tokenized_text)
-            self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+            self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
             return {
                 'rst': [tree]
@@ -429,7 +350,7 @@ class PredictorDMRST:
         batch = self.tokenize(input_data)
 
         # Perform forward pass
-        with torch.no_grad():
+        with torch.inference_mode():
             loss_tree_batch, loss_label_batch, \
                 span_batch, label_tuple_batch, predict_edu_breaks = self.model.testing_loss(
                 batch.input_sentences, batch.sent_breaks, batch.entity_ids, batch.entity_position_ids,
@@ -445,10 +366,8 @@ class PredictorDMRST:
         predictions['true_edu_breaks'] += batch.edu_breaks
 
         # Convert predictions to a tree structure
-        duc = DUConverter(predictions, tokenization_type='default')
-        tree = duc.collect()[0]
-
-        self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+        tree = DUConverter(predictions, tokenization_type='default').collect()[0]
+        self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
         return {
             'rst': [tree]
@@ -462,14 +381,14 @@ class PredictorDMRST:
 
         razdel_tokens = list(razdel.tokenize(text))
         tokenized_text = [token.text for token in razdel_tokens]
-        offset_positions, original_offsets = self._build_offset_converter(razdel_tokens)
+        offset_positions, original_offsets = self.build_offset_converter_from_razdel(razdel_tokens)
 
         if not tokenized_text:
             raise ValueError('Unable to tokenize text derived from the provided EDUs.')
 
         if len(normalized_edus) == 1:
             tree = DUConverter.dummy_tree(tokenized_text)
-            self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+            self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
             leaves: List[str] = []
             self._collect_leaf_texts(tree, leaves)
             if leaves != normalized_edus:
@@ -505,7 +424,7 @@ class PredictorDMRST:
 
         batch = self.tokenize(input_data)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             loss_tree_batch, loss_label_batch, \
                 span_batch, label_tuple_batch, predict_edu_breaks = self.model.testing_loss(
                 batch.input_sentences, batch.sent_breaks, batch.entity_ids, batch.entity_position_ids,
@@ -519,10 +438,9 @@ class PredictorDMRST:
         predictions['true_spans'] += batch.golden_metric
         predictions['true_edu_breaks'] += batch.edu_breaks
 
-        duc = DUConverter(predictions, tokenization_type='default')
-        tree = duc.collect()[0]
+        tree = DUConverter(predictions, tokenization_type='default').collect()[0]
 
-        self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+        self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
         leaves: List[str] = []
         self._collect_leaf_texts(tree, leaves)
