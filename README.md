@@ -104,7 +104,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
     'right': (id=20, start=324, end=570),
     'relation': 'elaboration',
     'nuclearity': 'NS',
-    'proba': 1.0,
+    'proba': 0.92,
     'start': 1,
     'end': 570,
     'text': "On Saturday, ... took two wickets.",
@@ -115,6 +115,7 @@ To use the IsaNLP RST Parser locally, follow these steps:
    - **left** and **right**: Children of the current discourse unit.
    - **relation**: Rhetorical relation between sub-units (e.g., "elaboration").
    - **nuclearity**: Indicates nuclearity of the relation (e.g., "NS" for nucleus-satellite).
+   - **proba**: Probability of the current split.
    - **start** and **end**: Character offsets in the text for this discourse unit.
    - **text**: Text span corresponding to this discourse unit.
 
