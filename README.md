@@ -79,8 +79,11 @@ To use the IsaNLP RST Parser locally, follow these steps:
 
    # Parse the text to obtain the RST tree
    res = parser(text)  # res['rst'] contains the binary discourse tree
+   
+   # Alternatively, provide your own text segments (EDUs) for tree construction
+   res = parser.from_edus(list_of_strings)
 
-   # Display the structure of the RST tree
+   # Inspect the structure of the RST tree
    vars(res['rst'][0])
    ```
 
