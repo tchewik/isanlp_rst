@@ -13,6 +13,7 @@ from isanlp.annotation import Token
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, AutoConfig
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+import logging
 
 from .data_manager import DataManager  # noqa: F401 - ensure module is registered for pickle
 from .du_converter import DUConverter
@@ -32,7 +33,7 @@ def str2bool(value):
     return bool(value)
 
 
-class Predictor:
+class PredictorUniRST:
     _MODULE_ALIASES = {
         'src.universal_parser.data_manager': 'isanlp_rst.universal_parser.data_manager',
         'src.universal_parser.du_converter': 'isanlp_rst.universal_parser.du_converter',
@@ -59,6 +60,7 @@ class Predictor:
         cuda_device: int = -1,
     ) -> None:
         self._ensure_module_aliases()
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.mode: Optional[str] = None
         if hf_model_name is not None:
@@ -94,8 +96,6 @@ class Predictor:
         with open(self.config_path, 'r', encoding='utf8') as f:
             self.config = json.load(f)
 
-        print(self.config)
-
         corpora = self.config['data']['corpora']
         if isinstance(corpora, str):
             corpora = ast.literal_eval(corpora)
@@ -127,9 +127,6 @@ class Predictor:
 
         self._load_model()
 
-    # ------------------------------------------------------------------
-    # Initialization helpers
-    # ------------------------------------------------------------------
     @classmethod
     def _ensure_module_aliases(cls) -> None:
         if cls._aliases_registered:
@@ -145,7 +142,7 @@ class Predictor:
         sys.modules[alias] = module
         parent_name, _, child_name = alias.rpartition('.')
         if parent_name:
-            parent = Predictor._ensure_parent_module(parent_name)
+            parent = PredictorUniRST._ensure_parent_module(parent_name)
             setattr(parent, child_name, module)
 
     @staticmethod
@@ -157,7 +154,7 @@ class Predictor:
         sys.modules[name] = module
         parent_name, _, child_name = name.rpartition('.')
         if parent_name:
-            parent = Predictor._ensure_parent_module(parent_name)
+            parent = PredictorUniRST._ensure_parent_module(parent_name)
             setattr(parent, child_name, module)
         return module
 
@@ -235,9 +232,6 @@ class Predictor:
         with open(resolved, 'r', encoding='utf8') as f:
             return [line.strip() for line in f if line.strip()]
 
-    # ------------------------------------------------------------------
-    # Model initialization
-    # ------------------------------------------------------------------
     def _load_model(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config['model']['transformer']['model_name'],
@@ -398,9 +392,6 @@ class Predictor:
 
         return config
 
-    # ------------------------------------------------------------------
-    # Tokenization helpers
-    # ------------------------------------------------------------------
     def tokenize(self, data: Data) -> Data:
         """Takes word-level tokenized data and converts it to transformer subword inputs."""
 
@@ -516,9 +507,6 @@ class Predictor:
 
         return batches
 
-    # ------------------------------------------------------------------
-    # Offset utilities
-    # ------------------------------------------------------------------
     @staticmethod
     def _build_offset_converter(
         tokens: Sequence[str],
@@ -610,9 +598,6 @@ class Predictor:
             cursor = end
         return offsets
 
-    # ------------------------------------------------------------------
-    # EDU helpers
-    # ------------------------------------------------------------------
     def _validate_edus(self, edus: Sequence[str]) -> List[str]:
         if edus is None:
             raise ValueError('`edus` must be provided for parsing.')
@@ -690,13 +675,10 @@ class Predictor:
             return
 
         if left is not None:
-            Predictor._collect_leaf_texts(left, acc)
+            PredictorUniRST._collect_leaf_texts(left, acc)
         if right is not None:
-            Predictor._collect_leaf_texts(right, acc)
+            PredictorUniRST._collect_leaf_texts(right, acc)
 
-    # ------------------------------------------------------------------
-    # Inference API
-    # ------------------------------------------------------------------
     def parse_rst(
         self,
         text: str,

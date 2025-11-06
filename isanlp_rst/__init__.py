@@ -9,8 +9,11 @@ serialising ``isanlp.annotation_rst.DiscourseUnit`` trees back into the
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
+import transformers
+import warnings
 from pathlib import Path
 from typing import Any
 from typing import IO, Awaitable, Dict, Optional, Union
@@ -22,6 +25,18 @@ try:  # pragma: no cover - dependency is optional in tests
     from isanlp.annotation_rst import DiscourseUnit
 except Exception:  # pragma: no cover - fall back when isanlp is unavailable
     DiscourseUnit = None  # type: ignore[misc]
+
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"The new embeddings will be initialized from a multivariate normal distribution",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"dropout option adds dropout after all but last recurrent layer",
+    module=r"torch\.nn\.modules\.rnn",
+)
 
 __all__ = [
     "RenderedRST",

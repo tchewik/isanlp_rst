@@ -138,13 +138,20 @@ class EncoderRNN(nn.Module):
             if self.normalize_embeddings:
                 embeddings = self.layer_norm(embeddings)
 
-            cur_edu_break = edu_breaks[i]  # Only gold segmentation for parser during training
+            cur_sent_break = sent_breaks[i] if sent_breaks else None
+            if is_test:
+                cur_edu_break = self.segmenters[dataset_index[i]].test_segment_loss(embeddings.squeeze(),
+                                                                                    cur_sent_break)
+            else:
+                cur_edu_break = edu_breaks[i]  # Only gold segmentation for parser during training
+
+            predict_edu_breaks_list.append(cur_edu_break)
 
             outputs, hidden = self.encode_edus(self.dropout(embeddings.squeeze(dim=0)), cur_edu_break)
             tem_outputs.append(outputs)
             all_hidden.append(hidden)
 
-        max_edu_break_num = max([len(tmp_l) for tmp_l in edu_breaks])
+        max_edu_break_num = max([len(tmp_l) for tmp_l in predict_edu_breaks_list])
 
         for output in tem_outputs:
             batch_size, cur_break_num, edu_dim = output.shape
@@ -275,7 +282,8 @@ class EncoderRNN(nn.Module):
                     # print(f'212 ::: {current_position_ids = }, {token_ids[:, start:].shape}')
                     one_win_res = self.transformer(token_ids[:, start:],
                                                    entity_ids=entity_ids[:, cur_entities],
-                                                   entity_position_ids=current_position_ids)[0][:, 2 * self.window_padding:, :]
+                                                   entity_position_ids=current_position_ids)[0][:,
+                                  2 * self.window_padding:, :]
                 else:
                     one_win_res = self.transformer(token_ids[:, start:])[0][:, 2 * self.window_padding:, :]
             else:
