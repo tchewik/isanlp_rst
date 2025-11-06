@@ -507,8 +507,9 @@ class ParsingNet(nn.Module):
                     # Generate a span structure: e.g. (1:Nucleus=span:8,9:Satellite=Attribution:12)
                     nuclearity_left, nuclearity_right, relation_left, relation_right = \
                         nucs_and_rels(label_idx, self.relation_table)
-                    span = '(1:' + str(nuclearity_left) + '=' + str(relation_left) + \
-                           ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
+                    span = '(' + '1:' + str(nuclearity_left) + '=' + str(relation_left)
+                    span += ';prob=' + '{:.6f}'.format(1.0)
+                    span += ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
                     span_batch.append([span])
 
             else:
@@ -589,8 +590,9 @@ class ParsingNet(nn.Module):
                                 label_idx, self.relation_table)
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
+                                relation_left)
+                            cur_span += ';prob=' + '{:.6f}'.format(1.0)
+                            cur_span += ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 
@@ -611,8 +613,9 @@ class ParsingNet(nn.Module):
                         atten_weights, log_atten_weights = self.pointer(cur_encoder_outputs[stack_head[:-1]],
                                                                         cur_decoder_output.squeeze(0).squeeze(0))
 
-                        _, topindex_tree = atten_weights.topk(1)
+                        split_values, topindex_tree = atten_weights.topk(1)
                         tree_predict = int(topindex_tree[0][0]) + stack_head[0]
+                        split_prob = float(split_values[0][0].detach().cpu().item())
 
                         cur_tree.append(tree_predict)
 
@@ -685,8 +688,9 @@ class ParsingNet(nn.Module):
                                 nucs_and_rels(label_idx, self.relation_table)
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
+                                relation_left)
+                            cur_span += ';prob=' + '{:.6f}'.format(split_prob)
+                            cur_span += ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 

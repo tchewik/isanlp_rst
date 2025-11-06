@@ -534,9 +534,6 @@ class ParsingNet(nn.Module):
                 tree_batch.append([0])
                 label_batch.append([label_idx])
 
-                if use_pred_segmentation is False:
-                    loss_label_batch += label_loss_function(log_relation_weights, cur_label_index)
-
                 loop_label_batch += 1
 
                 if generate_tree:
@@ -547,8 +544,10 @@ class ParsingNet(nn.Module):
                     else:
                         nuclearity_left, nuclearity_right, relation_left, relation_right = \
                         nucs_and_rels(label_idx, self.relation_tables[cls_idx])
-                    span = '(1:' + str(nuclearity_left) + '=' + str(relation_left) + \
-                           ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
+                    span = '('
+                    span += '1:' + str(nuclearity_left) + '=' + str(relation_left)
+                    span += ';prob=' + '{:.6f}'.format(1.0)
+                    span += ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
                     span_batch.append([span])
 
             else:
@@ -610,15 +609,6 @@ class ParsingNet(nn.Module):
                         cur_decoder_output, cur_decoder_hidden = self.decoder(cur_decoder_input,
                                                                               last_hidden=cur_decoder_hidden)
 
-                        if use_pred_segmentation is False:
-                            # Align ground true label
-                            if loop_index > (len(cur_ParsingIndex) - 1):
-                                cur_label_true = cur_label_index[-1]
-                            else:
-                                cur_label_true = cur_label_index[loop_index]
-
-                            loss_label_batch += label_loss_function(log_relation_weights, cur_label_true.unsqueeze(0))
-
                         loop_label_batch += 1
                         loop_index += 1
                         del stacks[-1]
@@ -634,8 +624,9 @@ class ParsingNet(nn.Module):
                                     label_idx, self.relation_tables[cls_idx])
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
+                                relation_left)
+                            cur_span += ';prob=' + '{:.6f}'.format(1.0)
+                            cur_span += ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 
@@ -656,8 +647,9 @@ class ParsingNet(nn.Module):
                         atten_weights, log_atten_weights = self.pointer(cur_encoder_outputs[stack_head[:-1]],
                                                                         cur_decoder_output.squeeze(0).squeeze(0))
 
-                        _, topindex_tree = atten_weights.topk(1)
+                        split_values, topindex_tree = atten_weights.topk(1)
                         tree_predict = int(topindex_tree[0][0]) + stack_head[0]
+                        split_prob = float(split_values[0][0].detach().cpu().item())
 
                         cur_tree.append(tree_predict)
 
@@ -681,26 +673,6 @@ class ParsingNet(nn.Module):
                         _, topindex_label = relation_weights.topk(1)
                         label_idx = int(topindex_label[0][0])
                         cur_label.append(label_idx)
-
-                        if use_pred_segmentation is False:
-
-                            # Align ground true label and tree
-                            if loop_index > (len(cur_ParsingIndex) - 1):
-                                cur_label_true = cur_label_index[-1]
-                                cur_tree_true = cur_ParsingIndex[-1]
-                            else:
-                                cur_label_true = cur_label_index[loop_index]
-                                cur_tree_true = cur_ParsingIndex[loop_index]
-
-                            temp_ground = max(0, (int(cur_tree_true) - int(stack_head[0])))
-                            if temp_ground >= (len(stack_head) - 1):
-                                temp_ground = stack_head[-2] - stack_head[0]
-                            # Compute Tree Loss
-                            cur_ground_index = torch.tensor([temp_ground])
-                            cur_ground_index = cur_ground_index.to(self._cuda_device)
-
-                            loss_tree_batch += span_loss_function(log_atten_weights, cur_ground_index)
-                            loss_label_batch += label_loss_function(log_relation_weights, cur_label_true.unsqueeze(0))
 
                         # Stacks stuff
                         stack_left = stack_head[:(tree_predict - stack_head[0] + 1)]
@@ -728,8 +700,9 @@ class ParsingNet(nn.Module):
                                     nucs_and_rels(label_idx, self.relation_tables[cls_idx])
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
+                                relation_left)
+                            cur_span += ';prob=' + '{:.6f}'.format(split_prob)
+                            cur_span += ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 
