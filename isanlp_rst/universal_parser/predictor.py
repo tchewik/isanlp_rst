@@ -1,26 +1,26 @@
 import ast
 import json
+import logging
 import os
 import pickle
+import razdel
 import sys
+import torch
 import types
 from bisect import bisect_right
-from importlib import import_module
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
-
-import razdel
-import torch
 from huggingface_hub import hf_hub_download
+from importlib import import_module
+from isanlp.annotation import Token
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, AutoConfig
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from isanlp.annotation import Token
+from isanlp_rst.base_predictor import BasePredictor
+from isanlp_rst.utils.du_converter import DUConverter
 from .data_manager import DataManager  # noqa: F401 - ensure module is registered for pickle
-from .du_converter import DUConverter
 from .src.parser.data import Data
 from .src.parser.parsing_net import ParsingNet
 from .src.parser.parsing_net_bottom_up import ParsingNetBottomUp
-from .trainer import Trainer
 
 
 def str2bool(value):
@@ -33,7 +33,7 @@ def str2bool(value):
     return bool(value)
 
 
-class Predictor:
+class PredictorUniRST(BasePredictor):
     _MODULE_ALIASES = {
         'src.universal_parser.data_manager': 'isanlp_rst.universal_parser.data_manager',
         'src.universal_parser.du_converter': 'isanlp_rst.universal_parser.du_converter',
@@ -60,6 +60,7 @@ class Predictor:
         cuda_device: int = -1,
     ) -> None:
         self._ensure_module_aliases()
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.mode: Optional[str] = None
         if hf_model_name is not None:
@@ -95,8 +96,6 @@ class Predictor:
         with open(self.config_path, 'r', encoding='utf8') as f:
             self.config = json.load(f)
 
-        print(self.config)
-
         corpora = self.config['data']['corpora']
         if isinstance(corpora, str):
             corpora = ast.literal_eval(corpora)
@@ -128,9 +127,6 @@ class Predictor:
 
         self._load_model()
 
-    # ------------------------------------------------------------------
-    # Initialization helpers
-    # ------------------------------------------------------------------
     @classmethod
     def _ensure_module_aliases(cls) -> None:
         if cls._aliases_registered:
@@ -146,7 +142,7 @@ class Predictor:
         sys.modules[alias] = module
         parent_name, _, child_name = alias.rpartition('.')
         if parent_name:
-            parent = Predictor._ensure_parent_module(parent_name)
+            parent = PredictorUniRST._ensure_parent_module(parent_name)
             setattr(parent, child_name, module)
 
     @staticmethod
@@ -158,7 +154,7 @@ class Predictor:
         sys.modules[name] = module
         parent_name, _, child_name = name.rpartition('.')
         if parent_name:
-            parent = Predictor._ensure_parent_module(parent_name)
+            parent = PredictorUniRST._ensure_parent_module(parent_name)
             setattr(parent, child_name, module)
         return module
 
@@ -236,9 +232,6 @@ class Predictor:
         with open(resolved, 'r', encoding='utf8') as f:
             return [line.strip() for line in f if line.strip()]
 
-    # ------------------------------------------------------------------
-    # Model initialization
-    # ------------------------------------------------------------------
     def _load_model(self) -> None:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config['model']['transformer']['model_name'],
@@ -399,9 +392,6 @@ class Predictor:
 
         return config
 
-    # ------------------------------------------------------------------
-    # Tokenization helpers
-    # ------------------------------------------------------------------
     def tokenize(self, data: Data) -> Data:
         """Takes word-level tokenized data and converts it to transformer subword inputs."""
 
@@ -426,7 +416,7 @@ class Predictor:
             word_offsets, tokens['offset_mapping'], data.edu_breaks
         ):
             subword_edu_breaks.append(
-                Trainer.recount_spans(doc_word_offsets, doc_subword_offsets, edu_breaks)
+                self._recount_spans(doc_word_offsets, doc_subword_offsets, edu_breaks)
             )
 
         if self.label_maps:
@@ -454,14 +444,6 @@ class Predictor:
             sibling=data.sibling,
             dataset_index=[self.relinventory_idx for _ in range(len(data.input_sentences))],
         )
-
-    @staticmethod
-    def divide_chunks(_list: Sequence, n: int) -> Iterable[Sequence]:
-        if _list:
-            for i in range(0, len(_list), n):
-                yield _list[i : min(i + n, len(_list))]
-        else:
-            yield _list
 
     def get_batches(self, data: Data, size: int) -> List[Data]:
         """Splits a batch into multiple smaller batches of the given size."""
@@ -517,80 +499,6 @@ class Predictor:
 
         return batches
 
-    # ------------------------------------------------------------------
-    # Offset utilities
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _build_offset_converter(
-        tokens: Sequence[str],
-        offsets: Optional[Sequence[Tuple[int, int]]] = None,
-    ) -> Tuple[List[int], List[int]]:
-        positions: List[int] = []
-        originals: List[int] = []
-        cursor = 0
-
-        if offsets is None:
-            raise ValueError('Offsets must be provided for pre-tokenized input.')
-
-        for idx, (token, (start, end)) in enumerate(zip(tokens, offsets)):
-            token_text = token or ''
-            for _ in range(len(token_text)):
-                positions.append(cursor)
-                originals.append(start)
-                start += 1
-                cursor += 1
-            positions.append(cursor)
-            originals.append(end)
-            if idx != len(tokens) - 1:
-                cursor += 1
-
-        if not positions:
-            positions = [0]
-            originals = [0]
-
-        return positions, originals
-
-    @staticmethod
-    def _map_offset(value: int, positions: List[int], originals: List[int]) -> int:
-        if not positions:
-            return value
-
-        index = bisect_right(positions, value) - 1
-        if index < 0:
-            index = 0
-        elif index >= len(originals):
-            index = len(originals) - 1
-
-        return originals[index]
-
-    def _remap_tree_offsets(
-        self,
-        unit,
-        positions: List[int],
-        originals: List[int],
-        original_text: str,
-    ) -> None:
-        left = getattr(unit, 'left', None)
-        right = getattr(unit, 'right', None)
-
-        if left is not None:
-            self._remap_tree_offsets(left, positions, originals, original_text)
-        if right is not None:
-            self._remap_tree_offsets(right, positions, originals, original_text)
-
-        if left is None and right is None:
-            unit.start = self._map_offset(unit.start, positions, originals)
-            unit.end = self._map_offset(unit.end, positions, originals)
-        else:
-            unit.start = (
-                left.start if left is not None else self._map_offset(unit.start, positions, originals)
-            )
-            unit.end = (
-                right.end if right is not None else self._map_offset(unit.end, positions, originals)
-            )
-
-        unit.text = original_text[unit.start : unit.end]
-
     @staticmethod
     def _guess_token_offsets(text: str, tokens: Sequence[str]) -> List[Tuple[int, int]]:
         offsets: List[Tuple[int, int]] = []
@@ -611,9 +519,75 @@ class Predictor:
             cursor = end
         return offsets
 
-    # ------------------------------------------------------------------
-    # Inference API
-    # ------------------------------------------------------------------
+    def _validate_edus(self, edus: Sequence[str]) -> List[str]:
+        if edus is None:
+            raise ValueError('`edus` must be provided for parsing.')
+
+        if isinstance(edus, (str, bytes)):
+            raise TypeError('`edus` must be a sequence of strings, not a single string.')
+
+        if not isinstance(edus, Sequence):
+            raise TypeError('`edus` must be a sequence of strings.')
+
+        if not edus:
+            raise ValueError('`edus` must contain at least one EDU.')
+
+        normalized: List[str] = []
+        for idx, edu in enumerate(edus):
+            if not isinstance(edu, str):
+                raise TypeError(f'EDU at position {idx} must be a string.')
+            if not edu:
+                raise ValueError(f'EDU at position {idx} is empty.')
+            normalized.append(edu)
+
+        return normalized
+
+    @staticmethod
+    def _compute_edu_char_spans(edus: Sequence[str]) -> Tuple[str, List[Tuple[int, int]]]:
+        text = ' '.join(edus)
+        spans: List[Tuple[int, int]] = []
+        cursor = 0
+
+        for idx, edu in enumerate(edus):
+            start = cursor
+            end = start + len(edu)
+            if text[start:end] != edu:
+                raise ValueError(f'EDU at position {idx} does not align after concatenation.')
+            spans.append((start, end))
+            if idx < len(edus) - 1:
+                cursor = end + 1
+            else:
+                cursor = end
+
+        return text, spans
+
+    @staticmethod
+    def _char_spans_to_token_breaks(offsets: Sequence[Tuple[int, int]], spans: List[Tuple[int, int]]) -> List[int]:
+        if not offsets:
+            raise ValueError('Unable to derive token boundaries from the provided EDUs.')
+
+        token_stops = [stop for _, stop in offsets]
+        edu_breaks: List[int] = []
+        token_idx = -1
+
+        for span_idx, (_, edu_end) in enumerate(spans):
+            while token_idx + 1 < len(token_stops) and token_stops[token_idx + 1] <= edu_end:
+                token_idx += 1
+
+            if token_idx == -1 or token_stops[token_idx] != edu_end:
+                raise ValueError(
+                    f'EDU at position {span_idx} does not align with tokenizer boundaries.'
+                )
+
+            edu_breaks.append(token_idx)
+
+        if edu_breaks[-1] != len(token_stops) - 1:
+            raise ValueError('EDU boundaries do not cover the entire tokenized text.')
+
+        return edu_breaks
+
+
+
     def parse_rst(
         self,
         text: str,
@@ -645,15 +619,11 @@ class Predictor:
             else:
                 offsets = list(token_offsets)
 
-        offset_positions, original_offsets = self._build_offset_converter(word_tokens, offsets)
-        output_tokens = [
-            Token(text=tok, begin=begin, end=end)
-            for tok, (begin, end) in zip(word_tokens, offsets)
-        ]
+        offset_positions, original_offsets = self.build_offset_converter_from_words(text, word_tokens, offsets)
 
         if len(word_tokens) < 3:
             tree = DUConverter.dummy_tree(word_tokens)
-            self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+            self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
             return {
                 'rst': [tree],
             }
@@ -679,7 +649,7 @@ class Predictor:
 
         batch = self.tokenize(input_data)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             (
                 _loss_tree,
                 _loss_label,
@@ -705,10 +675,99 @@ class Predictor:
         predictions['true_spans'] += batch.golden_metric
         predictions['true_edu_breaks'] += batch.edu_breaks
 
-        duc = DUConverter(predictions, tokenization_type='default')
-        tree = duc.collect(tokens=data['input_sentences'])[0]
+        tree = DUConverter(predictions, tokenization_type='default').collect(tokens=data['input_sentences'])[0]
+        self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
 
-        self._remap_tree_offsets(tree, offset_positions, original_offsets, text)
+        return {
+            'rst': [tree],
+        }
+
+    def parse_from_edus(self, edus: Sequence[str]) -> dict:
+        """Parse text using predefined EDU boundaries."""
+
+        normalized_edus = self._validate_edus(edus)
+        text, spans = self._compute_edu_char_spans(normalized_edus)
+
+        razdel_tokens = list(razdel.tokenize(text))
+        word_tokens = [token.text for token in razdel_tokens]
+        offsets = [(token.start, token.stop) for token in razdel_tokens]
+
+        offset_positions, original_offsets = self.build_offset_converter_from_words(text, word_tokens, offsets)
+
+        if not word_tokens:
+            raise ValueError('Unable to tokenize text derived from the provided EDUs.')
+
+        if len(normalized_edus) == 1:
+            tree = DUConverter.dummy_tree(word_tokens)
+            self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
+            leaves: List[str] = []
+            self._collect_leaf_texts(tree, leaves)
+            if leaves != normalized_edus:
+                raise ValueError('Failed to align the provided EDU with the parser output.')
+            return {
+                'rst': [tree],
+            }
+
+        edu_breaks = self._char_spans_to_token_breaks(offsets, spans)
+
+        num_edus = len(edu_breaks)
+        relation_placeholder = [[0] * max(num_edus - 1, 0)]
+        parsing_placeholder = [[0] * max(num_edus - 1, 0)]
+
+        data = Data(
+            input_sentences=[word_tokens],
+            edu_breaks=[edu_breaks],
+            decoder_input=[[]],
+            relation_label=relation_placeholder,
+            parsing_breaks=parsing_placeholder,
+            golden_metric=[[]],
+        )
+
+        predictions = {
+            'tokens': [],
+            'spans': [],
+            'edu_breaks': [],
+            'true_spans': [],
+            'true_edu_breaks': [],
+        }
+
+        batch = self.tokenize(data)
+
+        with torch.inference_mode():
+            (
+                _loss_tree,
+                _loss_label,
+                span_batch,
+                _label_tuple_batch,
+                predict_edu_breaks,
+            ) = self.model.testing_loss(
+                batch.input_sentences,
+                batch.sent_breaks,
+                batch.entity_ids,
+                batch.entity_position_ids,
+                batch.edu_breaks,
+                batch.relation_label,
+                batch.parsing_breaks,
+                generate_tree=True,
+                use_pred_segmentation=False,
+                dataset_index=batch.dataset_index,
+            )
+
+        predictions['tokens'] += [
+            self.tokenizer.convert_ids_to_tokens(text) for text in batch.input_sentences
+        ]
+        predictions['spans'] += span_batch
+        predictions['edu_breaks'] += batch.edu_breaks
+        predictions['true_spans'] += batch.golden_metric
+        predictions['true_edu_breaks'] += batch.edu_breaks
+
+        tree = DUConverter(predictions, tokenization_type='default').collect(tokens=[word_tokens])[0]
+        self.remap_tree_offsets(tree, offset_positions, original_offsets, text)
+
+        leaves: List[str] = []
+        self._collect_leaf_texts(tree, leaves)
+        if leaves != normalized_edus:
+            raise ValueError('The produced segmentation does not match the provided EDUs.')
 
         return {
             'rst': [tree],

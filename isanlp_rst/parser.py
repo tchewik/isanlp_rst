@@ -1,5 +1,8 @@
-from .dmrst_parser.predictor import Predictor as PredictorDMRST
-from .universal_parser.predictor import Predictor as PredictorUniversal
+from typing import Sequence
+
+from .dmrst_parser.predictor import PredictorDMRST
+from .universal_parser.predictor import PredictorUniRST
+
 
 class Parser:
     DMRST_PARSERS = ('gumrrg', 'rstdt', 'rstreebank')
@@ -22,7 +25,7 @@ class Parser:
                 cuda_device=cuda_device
             )
         elif hf_model_version in self.UNIVERSAL_PARSERS:
-            self.predictor = PredictorUniversal(
+            self.predictor = PredictorUniRST(
                 model_dir=model_dir,
                 hf_model_name=hf_model_name,
                 hf_model_version=hf_model_version,
@@ -37,3 +40,8 @@ class Parser:
 
     def __call__(self, text: str):
         return self.predictor.parse_rst(text)
+
+    def from_edus(self, edus: Sequence[str]):
+        """Parse a document using predefined EDUs."""
+
+        return self.predictor.parse_from_edus(edus)

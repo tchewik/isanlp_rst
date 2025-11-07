@@ -153,19 +153,6 @@ class ParsingNet(nn.Module):
             self.label_classifier = modules.DefaultPlusBiMPMClassifier(default_encoder=default_label_encoder,
                                                                        bimpm_encoder=bimpm_label_encoder)
 
-        self.max_w = max_w
-        self.max_h = max_h
-        if self.use_discriminator:
-            self.down, self.max_p, self.discriminator = None, None, None
-            self.turn_on_discriminator()
-
-    def turn_on_discriminator(self):
-        self.use_discriminator = True
-        self.down = nn.Sequential(nn.Conv2d(2, 32, (3, self.max_w // 2), 1, device=self._cuda_device), nn.ReLU())
-        self.down.apply(self._init_weights)
-        self.max_p = nn.MaxPool2d(kernel_size=(3, 3), stride=3)
-        self.discriminator = Discriminator(max_w=self.max_w, max_h=self.max_h, device=self._cuda_device)
-
     @staticmethod
     def _init_weights(layer):
         classname = layer.__class__.__name__
@@ -247,9 +234,6 @@ class ParsingNet(nn.Module):
                 loop_label_batch += 1
 
             else:
-                if self.use_discriminator:
-                    true_points = []  # [(point, relation, is_left_edu, is_right_edu), ...]
-                    pred_points = []  # [(start_idx, log_softmax_point, relation, is_left_edu, is_right_edu), ...]
 
                 cur_encoder_outputs = encoder_outputs[i][:len(edu_breaks[i])]
                 cur_last_hidden_states = last_hidden_states[:, i, :].unsqueeze(1)
@@ -299,12 +283,6 @@ class ParsingNet(nn.Module):
 
                             del stacks[-1]
                             loop_label_batch += 1
-
-                            if self.use_discriminator:
-                                true_points.append((cur_parsing_index[j], cur_label_index[j],
-                                                    True, 0, True))
-                                pred_points.append((cur_parsing_index[j], log_relation_weights,
-                                                    True, 0, True))
 
                         else:
                             # Compute Tree Loss
@@ -364,42 +342,10 @@ class ParsingNet(nn.Module):
                             if len(stack_left) > 1:
                                 stacks.append(stack_left)
 
-                            if self.use_discriminator:
-                                is_left_edu = cur_parsing_index[j] == stack_head[0]
-                                is_right_edu = cur_parsing_index[j] == stack_head[-1]
-
-                                true_points.append((cur_parsing_index[j], cur_label_index[j],
-                                                    is_left_edu, stack_head[0], is_right_edu))
-
-                                _, topindex_label = relation_weights.topk(1)
-                                label_pred_idx = int(topindex_label[0][0])
-
-                                pred_points.append((stack_head[0], log_atten_weights, label_pred_idx,
-                                                    is_left_edu, is_right_edu))
-
-                if self.use_discriminator:
-                    self._example_number = np.random.choice(1000)
-
-                    true_img = self._construct_true_img(true_points)
-                    d_true = self.discriminator(true_img)
-
-                    pred_img = self._construct_pred_img(pred_points)
-                    d_pred = self.discriminator(pred_img)
-
-                    # Generator loss
-                    g_loss = 0.5 * torch.mean((d_pred - 1) ** 2)
-
-                    # Discriminator loss
-                    d_loss = 0.5 * (torch.mean((d_true - 1.) ** 2) + torch.mean(d_pred ** 2))
-                    d_loss += g_loss
-
         loss_label_batch /= loop_label_batch
         loss_tree_batch /= max(loop_tree_batch, 1)
 
-        if self.use_discriminator:
-            return loss_tree_batch, loss_label_batch, total_edu_loss, d_loss
-        else:
-            return loss_tree_batch, loss_label_batch, total_edu_loss
+        return loss_tree_batch, loss_label_batch, total_edu_loss
 
     def testing_loss(self, input_sentence, input_sent_breaks, input_entity_ids, input_entity_position_ids,
                      input_edu_breaks, label_index, parsing_index, generate_tree, use_pred_segmentation):
@@ -504,11 +450,12 @@ class ParsingNet(nn.Module):
                 loop_label_batch += 1
 
                 if generate_tree:
-                    # Generate a span structure: e.g. (1:Nucleus=span:8,9:Satellite=Attribution:12)
+                    # Generate a span structure: e.g. (1:Nucleus=span:8,9:Satellite=Attribution:12);entropy=0.5
                     nuclearity_left, nuclearity_right, relation_left, relation_right = \
                         nucs_and_rels(label_idx, self.relation_table)
-                    span = '(1:' + str(nuclearity_left) + '=' + str(relation_left) + \
-                           ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
+                    span = '(' + '1:' + str(nuclearity_left) + '=' + str(relation_left)
+                    span += ';entropy=' + '{:.5f}'.format(0.0)
+                    span += ':1,2:' + str(nuclearity_right) + '=' + str(relation_right) + ':2)'
                     span_batch.append([span])
 
             else:
@@ -589,8 +536,9 @@ class ParsingNet(nn.Module):
                                 label_idx, self.relation_table)
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
+                                relation_left)
+                            cur_span += ';entropy=' + '{:.5f}'.format(0.0)
+                            cur_span += ':' + str(stack_head[0] + 1) + ',' + str(stack_head[-1] + 1) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 
@@ -611,8 +559,9 @@ class ParsingNet(nn.Module):
                         atten_weights, log_atten_weights = self.pointer(cur_encoder_outputs[stack_head[:-1]],
                                                                         cur_decoder_output.squeeze(0).squeeze(0))
 
-                        _, topindex_tree = atten_weights.topk(1)
+                        split_values, topindex_tree = atten_weights.topk(1)
                         tree_predict = int(topindex_tree[0][0]) + stack_head[0]
+                        split_entropy = self._calculate_normalized_entropy(log_atten_weights)
 
                         cur_tree.append(tree_predict)
 
@@ -685,8 +634,9 @@ class ParsingNet(nn.Module):
                                 nucs_and_rels(label_idx, self.relation_table)
 
                             cur_span = '(' + str(stack_head[0] + 1) + ':' + str(nuclearity_left) + '=' + str(
-                                relation_left) + \
-                                       ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
+                                relation_left)
+                            cur_span += ';entropy=' + '{:.5f}'.format(split_entropy)
+                            cur_span += ':' + str(tree_predict + 1) + ',' + str(tree_predict + 2) + ':' + str(
                                 nuclearity_right) + '=' + \
                                        str(relation_right) + ':' + str(stack_head[-1] + 1) + ')'
 
@@ -790,6 +740,31 @@ class ParsingNet(nn.Module):
 
         return input_left, input_right
 
+    def _calculate_normalized_entropy(self, log_atten_weights: torch.Tensor) -> float:
+        """
+        Calculates the normalized entropy H(p) / log(N) from the
+        log-probabilities (output of the pointer network).
+
+        Args:
+            log_atten_weights (torch.Tensor): The log-probabilities
+                                              (log-softmax) from self.pointer.
+                                              Expected shape: [1, N] or [N].
+
+        Returns:
+            float: The normalized entropy, a value between 0.0 (total
+                   certainty) and 1.0 (total uncertainty).
+        """
+        with torch.no_grad():
+            N = log_atten_weights.shape[-1]  # Number of splitting options
+            if N <= 1:
+                return 0.0
+
+            probs = torch.exp(log_atten_weights.detach())
+            raw_entropy = -torch.sum(probs * log_atten_weights.detach(), dim=-1)
+            max_entropy = torch.log(torch.tensor(N, device=probs.device, dtype=probs.dtype))
+            normalized_entropy = raw_entropy / max_entropy
+            return normalized_entropy.cpu().item()
+
     def eval_loss(self, batch, use_pred_segmentation=True, use_org_parseval=True):
 
         (batch_input_sentences, batch_sent_breaks, batch_entity_ids, batch_entity_position_ids,
@@ -804,264 +779,3 @@ class ParsingNet(nn.Module):
         metrics = get_batch_metrics(span_batch, batch_golden_metrics,
                                     predict_edu_breaks, batch_edu_breaks, use_org_parseval)
         return (loss_tree_batch, loss_label_batch), metrics
-
-    def _construct_true_img(self, true_points):
-        """
-        :param true_points: (list)  - [(breaking_point, rel_idx, is_left_edu, is_right_edu), ...]
-        :param n: (int)  - Number of edus
-        :return: (torch.tensor)  - "image" of the gold tree, two channels
-        """
-
-        # Initialize matrices with -2
-        x_st = torch.zeros([400, 400], device=self._cuda_device) - 2
-        x_nr = torch.zeros([400, 400], device=self._cuda_device) - 2
-
-        # Depth stack tracks current row index for each subtree depth
-        depth = None
-
-        for i, (j, rel_idx, is_left_edu, left_start_idx, is_right_edu) in enumerate(true_points):
-            if not depth:
-                depth = 1
-
-            row = depth
-
-            # Set split point
-            x_st[row - 1, j + 1] = 0
-            x_nr[row - 1, j + 1] = rel_idx
-
-            # Fill leaf nodes
-            if is_left_edu:
-                x_st[row, j] = -1
-                x_nr[row, j] = -1
-            if is_right_edu:
-                x_st[row, j + 2] = -1
-                x_st[row, j + 2] = -1
-
-            if not is_left_edu or not is_right_edu:
-                depth += 1
-            else:
-                # Pop depth if subtree complete
-                depth = 1
-
-        # matrix_to_image_2chan(x_st.detach().cpu().numpy(),
-        #                       x_nr.detach().cpu().numpy(),
-        #                       filename=f'images/true_{self._example_number}.png')
-
-        # (1, 2, max_h, max_w)
-        img = torch.cat((x_st[:self.max_h, :self.max_w].unsqueeze(0),
-                         x_nr[:self.max_h, :self.max_w].unsqueeze(0)), dim=0).unsqueeze(0)
-        img = self.discriminator.cnn_feat_ext(img)
-        return img
-
-    def _construct_pred_img(self, pred_points, kind='stack'):
-        """
-        :param pred_points: (list)  - [(start_idx, log_softmax_point_prediction, relation, is_left_edu, is_right_edu), ...]
-        :param n: (int)  - Number of splits
-        :return: (torch.tensor)  - "image" of the gold tree, two channels
-        """
-
-        # Initialize matrices with zeros
-        x_st = torch.zeros([400, 400], device=self._cuda_device) - 2
-        x_nr = torch.zeros([400, 400], device=self._cuda_device) - 2
-
-        if kind == 'stack':
-            # Depth stack tracks current row index for each subtree depth
-            depth_stack = []
-
-            for i, (start_idx, j_logs, rel_idx, is_left_edu, is_right_edu) in enumerate(pred_points):
-                if not depth_stack:
-                    depth_stack = [1]
-
-                row = depth_stack[-1]
-
-                # Find the possible split point
-                _, topindex_tree = j_logs.topk(1)
-                j = int(topindex_tree[0][0]) + start_idx
-
-                # Set split point
-                x_st[row - 1, start_idx:start_idx + j_logs.size(1)] += j_logs[0]
-                x_nr[row - 1, j + 1] = rel_idx
-
-                # Fill leaf nodes
-                if is_left_edu:
-                    x_st[row, j] = -1
-                    x_nr[row, j] = -1
-                if is_right_edu:
-                    x_st[row, j + 2] = -1
-                    x_st[row, j + 2] = -1
-
-                if not is_left_edu and not is_right_edu:
-                    # depth_stack.append(depth_stack[-1] + 1)
-                    depth_stack[-1] += 1
-                    pass
-                else:
-                    # Pop depth if subtree complete
-                    depth_stack.pop()
-
-        elif kind == 'graph':
-            # For sorting by tree level
-            preds = []
-            for start_idx, j_logs, rel_idx, is_left_edu, is_right_edu in pred_points:
-                preds.append((start_idx, start_idx + j_logs[0].shape[-1]))
-
-            tree = construct_tree(preds)
-            root = [n for n, d in tree.in_degree() if d == 0][0]
-
-            # Calculate the shortest paths (their length are rows in our matrix)
-            rows_dict = dict()  # dictionary {i: row}
-            for n in tree.nodes():
-                if nx.has_path(tree, root, n):
-                    rows_dict[n] = nx.shortest_path_length(tree, root, n)
-
-            for i, (start_idx, j_logs, rel_idx, is_left_edu, is_right_edu) in enumerate(pred_points):
-                row = rows_dict.get(i)
-                if not row:
-                    continue
-                else:
-                    row += 1
-
-                # Find the possible split point
-                _, topindex_tree = j_logs.topk(1)
-                j = int(topindex_tree[0][0]) + start_idx
-
-                # Set split point
-                x_st[row - 1, start_idx:start_idx + j_logs.size(1)] += j_logs[0]
-                x_nr[row - 1, j + 1] = rel_idx
-
-                # Fill leaf nodes
-                if is_left_edu:
-                    x_st[row, j] = -1
-                    x_nr[row, j] = -1
-                if is_right_edu:
-                    x_st[row, j + 2] = -1
-                    x_st[row, j + 2] = -1
-
-        # matrix_to_image_2chan(x_st.detach().cpu().numpy(),
-        #                       x_nr.detach().cpu().numpy(),
-        #                       filename=f'images/pred_{self._example_number}.png')
-
-        # (1, 2, num_splits, num_edus)
-        img = torch.cat((x_st[:self.max_h, :self.max_w].unsqueeze(0),
-                         x_nr[:self.max_h, :self.max_w].unsqueeze(0)), dim=0).unsqueeze(0)
-        img = self.cnn_feat_ext(img[:, :, :self.max_h, :self.max_w].detach())
-
-        return img
-
-
-def construct_tree(spans):
-    G = nx.DiGraph()
-
-    # Add spans as nodes
-    for i, span in enumerate(spans):
-        G.add_node(i)
-
-    # Find child nodes
-    for i, span1 in enumerate(spans):
-        for j, span2 in enumerate(spans):
-            if i != j:
-                if span1[1] + 1 == span2[0]:
-                    concat = (span1[0], span2[1])
-                elif span2[1] + 1 == span1[0]:
-                    concat = (span2[0], span1[1])
-                else:
-                    continue
-
-                if concat in spans:
-                    parent = spans.index(concat)
-                    if parent != i:
-                        G.add_edge(parent, i)
-
-    return merge_trees(G)
-
-
-def merge_trees(G):
-    subtrees = list(nx.weakly_connected_components(G))
-
-    while len(subtrees) > 1:
-        dists = []
-        for i in range(len(subtrees) - 1):
-            G1 = G.subgraph(subtrees[i]).copy()
-            G2 = G.subgraph(subtrees[i + 1]).copy()
-            root1 = [n for n, d in G1.in_degree() if d == 0][0]
-            root2 = [n for n, d in G2.in_degree() if d == 0][0]
-            dists.append((root1, root2, abs(root1 - root2)))
-
-        # Merge closest subtrees
-        min_dist = min(dists, key=lambda x: x[2])
-        G1.add_edge(min_dist[0], min_dist[1])
-        G = nx.compose(G1, G2)
-        subtrees = list(nx.weakly_connected_components(G))
-
-    return G
-
-
-def matrix_to_image(matrix, filename, min_val=-2, max_val=0):
-    """Convert a 2D matrix to a grayscale image
-
-    Args:
-        matrix: 2D numpy array
-        filename: Output image file
-        min_val: Minimum value to map to 0. Defaults to matrix min.
-        max_val: Maximum value to map to 255. Defaults to matrix max.
-
-    Returns:
-        PIL Image object
-    """
-
-    if len(matrix.shape) != 2:
-        raise ValueError('Input matrix must be 2D')
-
-    if min_val is None:
-        min_val = matrix.min()
-    if max_val is None:
-        max_val = matrix.max()
-
-    matrix = (matrix - min_val) / (max_val - min_val)
-    matrix = (255 * matrix).astype(np.uint8)
-
-    with open(filename, 'wb') as f:
-        img = Image.fromarray(matrix)
-        img.save(f)
-        return img
-
-
-def matrix_to_image_2chan(matrix1, matrix2, filename, min_val=-2, max_val=0):
-    """Convert two 2D matrices to a 2-channel image
-
-    Args:
-        matrix1: First 2D numpy array (channel 1)
-        matrix2: Second 2D numpy array (channel 2)
-        filename: Output image file
-        min_val: Minimum value to map to 0. Defaults to matrix min.
-        max_val: Maximum value to map to 255. Defaults to matrix max.
-
-    Returns:
-        PIL Image object
-    """
-
-    shape1 = matrix1.shape
-    shape2 = matrix2.shape
-
-    if len(shape1) != 2 or len(shape2) != 2:
-        raise ValueError('Input matrices must be 2D')
-
-    if shape1 != shape2:
-        raise ValueError('Input matrices must have matching dimensions')
-
-    if min_val is None:
-        min_val = min(matrix1.min(), matrix2.min())
-    if max_val is None:
-        max_val = max(matrix1.max(), matrix2.max())
-
-    matrix1 = (matrix1 - min_val) / (max_val - min_val)
-    matrix2 = (matrix2 - min_val) / (max_val - min_val)
-    matrix1 = (255 * matrix1).astype(np.uint8)
-    matrix2 = (255 * matrix2).astype(np.uint8)
-
-    image = np.dstack((matrix1, matrix2, np.zeros(shape1)))
-    img_u8 = (255 * image).astype(np.uint8)
-
-    with open(filename, 'wb') as f:
-        img = Image.fromarray(img_u8, mode='RGB')
-        img.save(f)
-        return img

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isanlp_rst"
+version = "3.2.0"
+description = "IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+  { name = "Elena Chistova", email = "elenachistov@gmail.com" },
+]
+urls = { "Homepage" = "https://github.com/tchewik/isanlp_rst" }
+
+dependencies = [
+  "asyncio",
+  "playwright",
+  "razdel",
+  "fire",
+  "matplotlib",
+  "lxml",
+  "jsonnet",
+  "nltk",
+  "spacy",
+  "numpy==1.26.4",
+  "transformers",
+  "torch",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["tests"]
+
+[tool.setuptools.package-data]
+"isanlp_rst.rstviewer" = ["data/**"]

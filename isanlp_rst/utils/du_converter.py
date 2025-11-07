@@ -2,7 +2,7 @@ from isanlp.annotation_rst import DiscourseUnit
 
 
 class DUConverter:
-    def __init__(self, predictions: dict, tokenization_type='default'):
+    def __init__(self, predictions, tokenization_type='default'):
         self.predictions = predictions
         assert tokenization_type in ('default', 'rubert')
         self.tokenization_type = tokenization_type
@@ -17,23 +17,25 @@ class DUConverter:
             List of the predictions as isanlp.DiscourseUnit objects.
         """
 
+        # with open(self.predictions_path, 'rb') as f:
+        #    predictions = pickle.load(f)
+
         data = []
         for i in range(len(self.predictions['tokens'])):
             gold_tokens = None
-            # if tokens:
-            #     gold_tokens = tokens[i]
+            if tokens:
+                gold_tokens = tokens[i]
 
             edus = self._lists_to_isanlp_format(tokens=self.predictions['tokens'][i],
                                                 edu_breaks=self.predictions['edu_breaks'][i],
                                                 gold_tokens=gold_tokens)
             if len(edus) == 1:
-                data.append(edus[0])
+                return edus
 
-            else:
-                self.du_id = len(edus)
-                rels = self._tree_string_to_list(self.predictions['spans'][i][0])
-                tree = self.construct_tree(0, edus, rels)
-                data.append(tree)
+            self.du_id = len(edus)
+            rels = self._tree_string_to_list(self.predictions['spans'][i][0])
+            tree = self.construct_tree(0, edus, rels)
+            data.append(tree)
 
         return data
 
@@ -41,46 +43,20 @@ class DUConverter:
     def fix_segmented_strings(predicted_segments, gold_tokens):
         fixed_segments = []
         start_token = 0
-        corrupted_input = False
 
         for segment in predicted_segments:
             segment_len = len(''.join(segment.split()))
+            fixed_segment = gold_tokens[start_token]
 
-            try:
-                fixed_segment = gold_tokens[start_token]
-            except:
-                print(f'list index out of range')
-                # print(f'{gold_tokens = }')
-                # print(f'{segment = }')
-                # print(f'{predicted_segments = }')
+            i = 0
+            while len(fixed_segment) < segment_len:
+                fixed_segment = ''.join(gold_tokens[start_token:start_token + i])
+                i += 1
 
-            if len(fixed_segment) == segment_len:
-                i = 1
-            else:
-                i = 0
-                while len(fixed_segment) < segment_len:
-                    fixed_segment = ''.join(gold_tokens[start_token:start_token + i]).replace('й', 'и').replace('ё', 'е')
-                    i += 1
-
-                    if i == 100:
-                        print('exceeded 100')
-                        print(f'{gold_tokens = }')
-                        print(f'{segment = }')
-                        print(f'{predicted_segments = }')
-                        print()
-
-                        # In case the input text is seriously corrupted (tokens are merged from two EDUs, etc.)
-                        corrupted_input = True
-                        break
-
-                i -= 1
-
-            if corrupted_input:
-                fixed_segments.append(segment.strip())
-            else:
-                fixed_segment = ' '.join(gold_tokens[start_token:start_token + i])
-                fixed_segments.append(fixed_segment.strip())
-                start_token += i
+            i -= 1
+            fixed_segment = ' '.join(gold_tokens[start_token:start_token + i])
+            fixed_segments.append(fixed_segment.strip())
+            start_token += i
 
         return fixed_segments
 
@@ -105,12 +81,6 @@ class DUConverter:
             elif self.tokenization_type == 'rubert':
                 text = ' '.join(tokens[prev_break:brk + 1]).replace(' ##', '')
 
-                # For exceptions concatenated in the input ("изменитбыли" case)
-                text = text.replace('##', ' ')
-
-                # For the infamous '[UNK] news [UNK] instory [UNK] rospot …'
-                text = text.replace('[UNK]', '›')
-
             edu = DiscourseUnit(
                 id=i,
                 text=text,
@@ -126,12 +96,8 @@ class DUConverter:
             pred_texts = [edu.text for edu in edus]
             gold_texts = self.fix_segmented_strings(pred_texts, gold_tokens)
             fixed_edus = []
-            start = 0
             for edu, fixed_text in zip(edus, gold_texts):
                 edu.text = fixed_text
-                edu.start = start
-                edu.end = start + len(fixed_text)
-                start += len(fixed_text) + 1
                 fixed_edus.append(edu)
             edus = fixed_edus
 
@@ -150,11 +116,22 @@ class DUConverter:
         """
         rels = []
         for rel in description.split(' '):
-            if rel == 'NONE':
-                return []
-
             left, right = rel.split(',')
             left_start, left_label, left_end = left[1:].split(':')
+            prob = 1.0
+            if ';prob=' in left_label:
+                left_label, prob_str = left_label.split(';prob=')
+                try:
+                    prob = float(prob_str)
+                except ValueError:
+                    prob = 1.0
+            entropy = 0.0
+            if ';entropy=' in left_label:
+                left_label, entropy_str = left_label.split(';entropy=')
+                try:
+                    entropy = float(entropy_str)
+                except ValueError:
+                    entropy = 0.0
             right_start, right_label, right_end = right[:-1].split(':')
             nuclearity = left_label[0] + right_label[0]
             relation = left_label.split('=')[1] if nuclearity == 'SN' else right_label.split('=')[1]
@@ -163,7 +140,8 @@ class DUConverter:
                          relation,
                          nuclearity,
                          int(right_start) - 1,
-                         int(right_end) - 1))
+                         int(right_end) - 1,
+                         entropy))
         return rels
 
     @staticmethod
@@ -181,7 +159,8 @@ class DUConverter:
         """
 
         for idx, rel in enumerate(rels):
-            if rel[0] == start and rel[-1] == end:
+            left_start, _, _, _, _, right_end, *_ = rel
+            if left_start == start and right_end == end:
                 return idx
 
     def construct_tree(self, root, edus, rels):
@@ -197,7 +176,7 @@ class DUConverter:
             Binary DiscourseUnit RST tree.
         """
 
-        left_start, left_end, relation, nuclearity, right_start, right_end = rels[root]
+        left_start, left_end, relation, nuclearity, right_start, right_end, entropy = rels[root]
 
         if left_start == left_end:
             left = edus[left_start]
@@ -212,14 +191,16 @@ class DUConverter:
             right = self.construct_tree(right_root, edus, rels)
 
         self.du_id += 1
-        return DiscourseUnit(id=self.du_id,
-                             left=left,
-                             right=right,
-                             relation=relation,
-                             nuclearity=nuclearity,
-                             start=left.start,
-                             end=right.end,
-                             text=left.text + ' ' + right.text)
+        du = DiscourseUnit(id=self.du_id,
+                           left=left,
+                           right=right,
+                           entropy=entropy,
+                           relation=relation,
+                           nuclearity=nuclearity,
+                           start=left.start,
+                           end=right.end,
+                           text=left.text + ' ' + right.text)
+        return du
 
     @staticmethod
     def dummy_tree(tokens):

@@ -1,6 +1,10 @@
 import re
 
 
+def _strip_entropy(span: str) -> str:
+    return re.sub(r';entropy=[^:]+', '', span)
+
+
 def get_eval_data_rst_parseval(sen, edus):
     b = re.findall(r'\d+', sen)
     b = [str(edus[int(i) - 1]) for i in b]
@@ -13,7 +17,7 @@ def get_eval_data_rst_parseval(sen, edus):
     # print(span)
     dic = {}
     for i in range(len(span)):
-        temp = span[i]
+        temp = _strip_entropy(span[i])
         IDK = re.split(r'[:,=]', temp)
         Nuclearity1 = IDK[1]
         relation1 = IDK[2]
@@ -28,7 +32,7 @@ def get_eval_data_parseval(tree_spans: str, edus: list):
     span_list = tree_spans.strip().split()
     dic = {}
     for i in range(len(span_list)):
-        temp = span_list[i]
+        temp = _strip_entropy(span_list[i])
         IDK = re.split(r'[:,=]', temp)
         nuclearity = IDK[1][0] + IDK[5][0]
         relation1 = IDK[2]

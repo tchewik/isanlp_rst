@@ -1,2 +1,5 @@
 __pycache__/
 *.py[cod]
+**/.ipynb_checkpoints/
+build/
+*.egg-info/
