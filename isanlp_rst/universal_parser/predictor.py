@@ -37,7 +37,6 @@ class PredictorUniRST(BasePredictor):
     _MODULE_ALIASES = {
         'src.universal_parser.data_manager': 'isanlp_rst.universal_parser.data_manager',
         'src.universal_parser.du_converter': 'isanlp_rst.utils.du_converter',
-        'src.universal_parser.trainer': 'isanlp_rst.universal_parser.trainer',
         'src.universal_parser.src.corpus.binary_tree': 'isanlp_rst.universal_parser.src.corpus.binary_tree',
         'src.universal_parser.src.corpus.data': 'isanlp_rst.universal_parser.src.corpus.data',
         'src.universal_parser.src.parser.data': 'isanlp_rst.universal_parser.src.parser.data',
