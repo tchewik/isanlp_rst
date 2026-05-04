@@ -33,7 +33,9 @@ class NpEncoder(json.JSONEncoder):
             return int(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        if isinstance(obj, np.string_):
+        # np.string_ was removed in numpy 2.0; use np.bytes_ (string_ was an
+        # alias for bytes_ in numpy 1.x, so this is behaviour-preserving).
+        if isinstance(obj, np.bytes_):
             return str(obj)
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
