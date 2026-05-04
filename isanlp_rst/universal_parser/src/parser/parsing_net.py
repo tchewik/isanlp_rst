@@ -2,7 +2,6 @@ import networkx as nx
 import numpy as np
 import torch
 import torch.nn as nn
-from PIL import Image
 
 from . import modules
 from . import segmenters

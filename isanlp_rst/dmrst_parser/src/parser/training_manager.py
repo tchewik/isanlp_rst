@@ -33,7 +33,9 @@ class NpEncoder(json.JSONEncoder):
             return int(obj)
         if isinstance(obj, np.ndarray):
             return obj.tolist()
-        if isinstance(obj, np.string_):
+        # np.string_ was removed in numpy 2.0; use np.bytes_ (string_ was an
+        # alias for bytes_ in numpy 1.x, so this is behaviour-preserving).
+        if isinstance(obj, np.bytes_):
             return str(obj)
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
@@ -104,9 +106,12 @@ class TrainingManager:
                 weight_decay=self.weight_decay
             )
 
-        # Schedule LR based on e2e_val_f1_full
-        self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'max', min_lr=1e-8,
-                                                                 factor=0.5, patience=2, verbose=True, )
+        # Schedule LR based on e2e_val_f1_full.
+        # `verbose=True` was removed in PyTorch 2.x; use the scheduler's
+        # native logging hook (it emits an INFO log line on every reduction).
+        self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, 'max', min_lr=1e-8, factor=0.5, patience=2,
+        )
 
         self._cuda_cache_dump_frequency = .5
 

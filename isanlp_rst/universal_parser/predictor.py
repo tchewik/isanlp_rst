@@ -318,7 +318,13 @@ class PredictorUniRST(BasePredictor):
         model_cls = ParsingNet if parser_type == 'top-down' else ParsingNetBottomUp
 
         self.model = model_cls(**model_config).to(self._cuda_device)
-        self.model.load_state_dict(torch.load(self.model_file, map_location=self._cuda_device))
+        # weights_only=True: refuses pickled-Python content in the checkpoint,
+        # mitigating the arbitrary-code-execution vector that motivated PyTorch
+        # 2.6's default flip. State dicts from huggingface_hub are tensor-only,
+        # so this is a safe-default upgrade with no behavioural change.
+        self.model.load_state_dict(
+            torch.load(self.model_file, map_location=self._cuda_device, weights_only=True)
+        )
         self.model.eval()
 
     def _get_model_configs(self) -> dict:
