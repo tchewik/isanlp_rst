@@ -14,7 +14,6 @@ authors = [
 urls = { "Homepage" = "https://github.com/tchewik/isanlp_rst" }
 
 dependencies = [
-  "asyncio",
   "playwright",
   "razdel",
   "fire",
@@ -23,9 +22,14 @@ dependencies = [
   "jsonnet",
   "nltk",
   "spacy",
-  "numpy==1.26.4",
+  "numpy>=1.26,<3.0",
   "transformers",
   "torch",
+  # Imported at runtime by both predictors but missing upstream:
+  "huggingface_hub",
+  "tqdm",
+  "networkx",
+  "pillow",
 ]
 
 [tool.setuptools.packages.find]
