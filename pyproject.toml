@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isanlp_rst"
-version = "3.2.0"
+version = "3.2.1"
 description = "IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [
   { name = "Elena Chistova", email = "elenachistov@gmail.com" },
 ]
@@ -25,7 +25,6 @@ dependencies = [
   "numpy>=1.26,<3.0",
   "transformers",
   "torch",
-  # Imported at runtime by both predictors but missing upstream:
   "huggingface_hub",
   "tqdm",
   "networkx",
