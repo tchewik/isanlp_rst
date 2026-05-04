@@ -1,9 +1,12 @@
+import logging
 import os
 import shutil
 import sys
 
 import numpy as np
 from nltk import Tree
+
+logger = logging.getLogger(__name__)
 # from nltk.draw import TreeWidget
 # from nltk.draw.util import CanvasFrame
 
@@ -36,7 +39,7 @@ class Corpus:
     def read(self):
         self.getDocuments()
         for doc in self.documents:
-            print("Reading:", os.path.basename(doc.path), file=sys.stderr)
+            logger.debug("Reading: %s", os.path.basename(doc.path))
             doc.read()
             common.addLabels(doc.tree, self.originLabels)
             if self.mapping:
@@ -45,14 +48,17 @@ class Corpus:
         self.validDocuments = [d for d in self.documents if d.tree is not None]
         # self.validDocuments = self.documents
         self.pb_files = [d.path for d in self.documents if d.tree is None]
-        print("\t#Files read:", len(self.files),
-              "#Tree built:", len(self.validDocuments), file=sys.stderr)
+        logger.info(
+            "Corpus read complete: files=%d, trees built=%d",
+            len(self.files),
+            len(self.validDocuments),
+        )
 
     def write(self, outpath):
         if not os.path.isdir(outpath):
             os.mkdir(outpath)
         for doc in self.validDocuments:
-            print("Writing:", os.path.basename(doc.path), file=sys.stderr)
+            logger.debug("Writing: %s", os.path.basename(doc.path))
             doc.writeTree(outpath, self.outputExt)
             doc.writeEdu(outpath)
             if self.draw:  # create a picture representing the tree
@@ -80,15 +86,18 @@ class Corpus:
             sys.exit("Unknown data type " + self.datatype)
 
     def printLabels(self):
-        ''' The label sets record tuples (relation, nuclearity)  '''
-        # -- Originaly
+        """The label sets record tuples (relation, nuclearity).
+
+        Emits at INFO level so the labels remain visible to operators
+        without printing to stdout (which interferes with parsing
+        pipelines that consume parser output via subprocess).
+        """
+        # -- Originally
         labels = np.unique([l for (l, n) in self.originLabels])
-        print("\n#Original Labels:" + str(len(labels)))
-        print(', '.join(sorted(labels)))
-        # -- Finaly/mapped
+        logger.info("Original labels (%d): %s", len(labels), ', '.join(sorted(labels)))
+        # -- Finally / mapped
         labels = np.unique([l for (l, n) in self.finalLabels])
-        print("\n#Final Labels:" + str(len(labels)))
-        print(', '.join(sorted(labels)))
+        logger.info("Final labels (%d): %s", len(labels), ', '.join(sorted(labels)))
 
     def __str__(self):
         return ' '.join([self.path, "Type:", self.datatype])
@@ -150,7 +159,7 @@ class Document:
             elif mappingRel == 'brazilianTCC_labels':
                 common.performMapping(self.tree, relation_set.brazilianTCC_labels)
             else:
-                print("Unknown mapping: " + mappingRel)
+                logger.warning("Unknown mapping: %s", mappingRel)
 
 
 class Rs3Document(Document):

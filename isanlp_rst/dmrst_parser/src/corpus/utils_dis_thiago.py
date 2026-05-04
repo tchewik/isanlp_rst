@@ -1,3 +1,4 @@
+import logging
 import os
 
 import numpy as np
@@ -5,6 +6,8 @@ import numpy as np
 
 from . import data
 from .utils_rs3 import CustomTokenizer
+
+logger = logging.getLogger(__name__)
 
 TOKENIZER = CustomTokenizer()
 
@@ -371,13 +374,26 @@ def findNodeT(m, allnodes):
 
 
 def findDuplicate(allnodes, verbose=False):
+    """Deduplicate nodes that share the same EDU span.
+
+    Args:
+        allnodes: list of nodes to dedupe.
+        verbose: when True, route diagnostic messages at INFO level
+            (visible when the root logger is at INFO or below). When
+            False, the same diagnostics are emitted at DEBUG level.
+            Both paths use the module logger rather than ``print`` so
+            output goes to stderr and respects the host's logging
+            configuration.
+    """
+    log = logger.info if verbose else logger.debug
     remove2kept = {}
     for i, n in enumerate(allnodes):
         for j, m in enumerate(allnodes):
             if i != j and n.eduspan == m.eduspan and not j in remove2kept.keys() and not j in remove2kept.values() and not i in remove2kept.keys() and not i in remove2kept.values():
-                if verbose:
-                    print("--KEPT", n.relation, n.prop, n.eduspan, n.text)
-                    print("--RM", m.relation, m.prop, m.eduspan, m.text)
+                log("--KEPT relation=%s prop=%s eduspan=%s text=%s",
+                    n.relation, n.prop, n.eduspan, n.text)
+                log("--RM   relation=%s prop=%s eduspan=%s text=%s",
+                    m.relation, m.prop, m.eduspan, m.text)
                 # keep n, remove m, transfer all info
                 n.nodelist.extend(m.nodelist)  # --- extend nodelist
                 remove2kept[j] = i
@@ -386,27 +402,26 @@ def findDuplicate(allnodes, verbose=False):
                     n.prop = m.prop
                 if n.text == None and m.text != None:  # --- keep text
                     n.text = m.text
-                if verbose:
-                    print("--Final KEPT", n.relation, n.prop, n.eduspan, n.text)
+                log("--Final KEPT relation=%s prop=%s eduspan=%s text=%s",
+                    n.relation, n.prop, n.eduspan, n.text)
     # Need to replace all instance of the nodes removed in the nodelist of the other nodes
     for k, n in enumerate(allnodes):
         if i in remove2kept:
-            if verbose:
-                print("will be removed", n.eduspan)
+            log("will be removed: eduspan=%s", n.eduspan)
         else:
             for c in n.nodelist:
                 idx = allnodes.index(c)
                 if idx in remove2kept:
-                    if verbose:
-                        print("Modified", n.eduspan, allnodes[idx].eduspan,
-                              allnodes[idx].relation, allnodes[idx].prop, allnodes[idx].text)
+                    log("Modified: eduspan=%s replaced_eduspan=%s relation=%s prop=%s text=%s",
+                        n.eduspan, allnodes[idx].eduspan,
+                        allnodes[idx].relation, allnodes[idx].prop, allnodes[idx].text)
                     idxc = n.nodelist.index(c)
                     n.nodelist.pop(idxc)
                     n.nodelist.append(allnodes[remove2kept[idx]])
-                    if verbose:
-                        print("Replaced by", allnodes[remove2kept[idx]].eduspan,
-                              allnodes[remove2kept[idx]].relation,
-                              allnodes[remove2kept[idx]].prop, allnodes[remove2kept[idx]].text)
+                    log("Replaced by: eduspan=%s relation=%s prop=%s text=%s",
+                        allnodes[remove2kept[idx]].eduspan,
+                        allnodes[remove2kept[idx]].relation,
+                        allnodes[remove2kept[idx]].prop, allnodes[remove2kept[idx]].text)
     # Remove the nodes
     newnodes = []
     for i, n in enumerate(allnodes):
@@ -414,8 +429,8 @@ def findDuplicate(allnodes, verbose=False):
             n.nodelist = orderNodeList(n.nodelist)
             newnodes.append(n)
         else:
-            if verbose:
-                print("Removed", i, n.eduspan, n.prop, n.relation)
+            log("Removed: index=%d eduspan=%s prop=%s relation=%s",
+                i, n.eduspan, n.prop, n.relation)
     allnodes = newnodes
     return newnodes
 
