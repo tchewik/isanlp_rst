@@ -210,6 +210,19 @@ Later, you can use `.fill_textfields(full_text)` to repopulate the tree using th
 
 **Important:** Do not use the `.to_rs3()` method on a tree with cleared text fields. 
 
+### JSON serialization
+
+Since `v3.2.1`, outputs can be serialized to JSON.
+
+```python
+from isanlp_rst.utils import tree_to_dict, tree_from_dict
+import json
+
+result = parser("Some text. More text.")
+serialised = tree_to_dict(result['rst'][0])
+restored = tree_from_dict(json.loads(json.dumps(serialised)))
+```
+
 -----
 
 ## Docker Setup
