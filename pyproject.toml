@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isanlp_rst"
-version = "3.2.1"
+version = "3.2.2"
 description = "IsaNLP RST Parser: A library for parsing Rhetorical Structure Theory trees."
 readme = "README.md"
 requires-python = ">=3.10"

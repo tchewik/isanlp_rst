@@ -16,10 +16,6 @@ class DUConverter:
         Returns:
             List of the predictions as isanlp.DiscourseUnit objects.
         """
-
-        # with open(self.predictions_path, 'rb') as f:
-        #    predictions = pickle.load(f)
-
         data = []
         for i in range(len(self.predictions['tokens'])):
             gold_tokens = None
@@ -46,17 +42,22 @@ class DUConverter:
 
         for segment in predicted_segments:
             segment_len = len(''.join(segment.split()))
-            fixed_segment = gold_tokens[start_token]
+            end_token = start_token
+            fixed_len = 0
 
-            i = 0
-            while len(fixed_segment) < segment_len:
-                fixed_segment = ''.join(gold_tokens[start_token:start_token + i])
-                i += 1
+            while end_token < len(gold_tokens) and fixed_len < segment_len:
+                fixed_len += len(gold_tokens[end_token])
+                end_token += 1
 
-            i -= 1
-            fixed_segment = ' '.join(gold_tokens[start_token:start_token + i])
+            if fixed_len < segment_len:
+                raise ValueError(
+                    f"Cannot align segment {segment!r}: expected {segment_len} "
+                    f"characters, got only {fixed_len} from remaining gold tokens"
+                )
+
+            fixed_segment = ' '.join(gold_tokens[start_token:end_token])
             fixed_segments.append(fixed_segment.strip())
-            start_token += i
+            start_token = end_token
 
         return fixed_segments
 
@@ -71,7 +72,6 @@ class DUConverter:
         Returns:
             List of the EDUs in isanlp format.
         """
-
         prev_break = 0
         prev_chr_end = 0
         edus = []
@@ -157,7 +157,6 @@ class DUConverter:
         Returns:
             Index of the given DU in the rels list.
         """
-
         for idx, rel in enumerate(rels):
             left_start, _, _, _, _, right_end, *_ = rel
             if left_start == start and right_end == end:
@@ -175,7 +174,6 @@ class DUConverter:
         Returns:
             Binary DiscourseUnit RST tree.
         """
-
         left_start, left_end, relation, nuclearity, right_start, right_end, entropy = rels[root]
 
         if left_start == left_end:
