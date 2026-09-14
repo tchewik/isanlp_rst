@@ -373,7 +373,7 @@ class TrainingManager:
         def get_weight(list_losses, k):
             return torch.tensor(list_losses[-k:]).sum() / torch.tensor(list_losses[-2 * k:-k]).sum()
 
-        if self.model.segmenter_type == 'tony' and self.model.segmenter.use_crf:
+        if self.model.segmenter_type == 'tony' and self.model.segmenters[0].use_crf:
             loss_segment_batch *= 0.01
 
         if self.use_dwa_loss:
